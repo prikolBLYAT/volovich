@@ -1,16 +1,14 @@
 import os
 import uuid
 import random
-import json
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from faker import Faker
 
 # Импорты драйверов СУБД
 import psycopg2
-from psycopg2.extras import execute_values
+from psycopg2.extras import execute_values, Json
 from neo4j import GraphDatabase
-import redis
 from pymongo import MongoClient
 from elasticsearch import Elasticsearch, helpers, ApiError
 
@@ -33,11 +31,6 @@ NEO4J_BOLT_PORT = os.getenv("NEO4J_BOLT_PORT", "7687")
 neo4j_auth_raw = os.getenv("NEO4J_AUTH", "neo4j/superpassword123!").split('/')
 NEO4J_USER = neo4j_auth_raw[0] if len(neo4j_auth_raw) > 0 else "neo4j"
 NEO4J_PASS = neo4j_auth_raw[1] if len(neo4j_auth_raw) > 1 else "superpassword123!"
-
-# Redis
-REDIS_HOST = os.getenv("REDIS_HOST", DB_HOST)
-REDIS_PORT = os.getenv("REDIS_PORT", "6379")
-REDIS_PASS = os.getenv("REDIS_PASSWORD", "superpassword123!")
 
 # MongoDB
 MONGO_HOST = os.getenv("MONGO_HOST", DB_HOST)
@@ -82,14 +75,6 @@ COURSE_NAMES = [
     "Архитектура ЭВМ", "Компьютерные сети", "Криптография", "Разработка под Web"
 ]
 
-TECH_EQUIPMENT_OPTIONS = [
-    "Проектор, маркерная доска",
-    "Проектор, аудиосистема, микрофон преподавателя",
-    "Компьютерный класс с GPU-ускорителями, компьютерные рабочие места",
-    "Сетевое оборудование, проектор",
-    "VR оборудование",
-    "Оборудование для физических эксперементов"
-]
 
 
 def generate_random_data():
@@ -104,6 +89,7 @@ def generate_random_data():
     students = []
     courses = []
     lectures = []
+    course_materials = []
     schedules = []
     attendances = []
 
@@ -171,6 +157,11 @@ def generate_random_data():
 
                         groups.append((group_id, spec_id, dept_id, group_name, enrollment_year, fake.name_male()))
 
+                        neo_nodes.append(("Group", {
+                            "id": group_id, "name": group_name,
+                            "enrollment_year": enrollment_year
+                        }))
+
                         for _ in range(STUDENTS_PER_GROUP):
                             st_id = str(uuid.uuid4())
                             is_male = random.choice([True, False])
@@ -184,8 +175,10 @@ def generate_random_data():
                             ))
 
                             neo_nodes.append(("Student", {
-                                "id": st_id, "first_name": f_name, "second_name": l_name, "card": card_num
+                                "id": st_id, "first_name": f_name, "second_name": l_name,
+                                "card": card_num
                             }))
+                            neo_relations.append((st_id, group_id, "BELONGS_TO"))
 
                     for c_idx in range(COURSES_PER_SPEC):
                         course_id = str(uuid.uuid4())
@@ -194,11 +187,9 @@ def generate_random_data():
                         lec_hours = total_hours // 2
                         prac_hours = total_hours // 2
 
-                        tech_reqs = f"Технические средства: {random.choice(TECH_EQUIPMENT_OPTIONS)} ({fake.catch_phrase()})"
-
                         courses.append((
-                            course_id, spec_id, c_name, fake.paragraph(nb_sentences=1),
-                            tech_reqs, random.randint(1, 8), total_hours, lec_hours, prac_hours
+                            course_id, spec_id, dept_id, c_name, fake.paragraph(nb_sentences=1),
+                            random.randint(1, 8), total_hours, lec_hours, prac_hours
                         ))
 
                         neo_nodes.append(("Course", {"id": course_id, "name": c_name}))
@@ -212,14 +203,25 @@ def generate_random_data():
                                 "title": f"{c_name}: {fake.sentence(nb_words=3)}",
                                 "annotation": fake.paragraph(nb_sentences=2),
                                 "content": fake.text(max_nb_chars=500),
+                                "technical_requirements": random.choice([True, False]),
                                 "type": random.choice(["Lecture", "Practice", "Lab"])
                             }
                             lectures.append(lec_item)
                             course_lectures.append(lec_item)
 
+                            material = {
+                                "id": str(uuid.uuid4()),
+                                "lecture_id": lec_id,
+                                "content_type": "text",
+                                "title": f"Материал: {lec_item['title']}",
+                                "file_url": None,
+                                "metadata": {"text": lec_item["content"]}
+                            }
+                            course_materials.append(material)
+
                             neo_nodes.append(
                                 ("Lecture", {"id": lec_id, "title": lec_item["title"], "type": lec_item["type"]}))
-                            neo_relations.append((course_id, lec_id, "HAS_LECTURE"))
+                            neo_relations.append((lec_id, course_id, "OF_COURSE"))
 
                         if course_lectures and group_ids:
                             for day_offset in range(DAYS_OF_SCHEDULE):
@@ -238,14 +240,15 @@ def generate_random_data():
                                         "date": sch_date,
                                         "period": p,
                                         "room": f"Аудитория {random.randint(100, 599)}",
-                                        "teacher": teacher_name
+                                        "lecturer": teacher_name
                                     })
 
                                     neo_nodes.append(("Schedule", {
                                         "id": sch_id, "date": str(sch_date), "period": p,
                                         "room": f"Аудитория {random.randint(100, 599)}"
                                     }))
-                                    neo_relations.append((selected_lec["id"], sch_id, "SCHEDULED_AT"))
+                                    neo_relations.append((selected_grp, sch_id, "HAS_SCHEDULE"))
+                                    neo_relations.append((sch_id, selected_lec["id"], "FOR_LECTURE"))
 
                                     grp_students = [s for s in students if s[1] == selected_grp]
                                     now_ts = datetime.now()
@@ -256,10 +259,6 @@ def generate_random_data():
                                             att_id, sch_id, st[0], sch_date, p, mark_val, now_ts
                                         ))
 
-                                        neo_nodes.append(
-                                            ("Attendance", {"id": att_id, "mark": mark_val, "date": str(sch_date)}))
-                                        neo_relations.append((st[0], att_id, "HAS_ATTENDANCE"))
-                                        neo_relations.append((att_id, sch_id, "FOR_SCHEDULE"))
 
             uni_institutes_doc.append({
                 "institute_id": inst_id,
@@ -288,6 +287,7 @@ def generate_random_data():
         "students": students,
         "courses": courses,
         "lectures": lectures,
+        "course_materials": course_materials,
         "schedules": schedules,
         "attendances": attendances,
         "mongo_hierarchy": mongo_hierarchy_docs,
@@ -321,13 +321,13 @@ def init_pg_tables(pg_cur):
     CREATE TABLE IF NOT EXISTS department_specialties (
         id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
         department_id UUID NOT NULL REFERENCES departments(id) ON DELETE CASCADE,
-        specialty_id UUID NOT NULL REFERENCES specialities(id) ON DELETE CASCADE,
-        CONSTRAINT idx_dept_spec UNIQUE (department_id, specialty_id)
+        speciality_id UUID NOT NULL REFERENCES specialities(id) ON DELETE CASCADE,
+        CONSTRAINT idx_dept_spec UNIQUE (department_id, speciality_id)
     );
     CREATE TABLE IF NOT EXISTS groups (
         id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
         speciality_id UUID NOT NULL REFERENCES specialities(id) ON DELETE CASCADE,
-        department_id UUID REFERENCES departments(id) ON DELETE CASCADE,
+        department_id UUID NOT NULL REFERENCES departments(id) ON DELETE CASCADE,
         name VARCHAR(100) NOT NULL, enrollment_year INT NOT NULL, curator VARCHAR(150)
     );
     CREATE TABLE IF NOT EXISTS students (
@@ -340,19 +340,26 @@ def init_pg_tables(pg_cur):
     CREATE TABLE IF NOT EXISTS courses (
         id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
         speciality_id UUID NOT NULL REFERENCES specialities(id) ON DELETE CASCADE,
-        name VARCHAR(255) NOT NULL, description TEXT, technical_requirements TEXT, semester INT NOT NULL,
-        duration_hours INT, lecture_hours INT, practics_hours INT
+        department_id UUID NOT NULL REFERENCES departments(id) ON DELETE CASCADE,
+        name VARCHAR(255) NOT NULL, description TEXT, semester INT NOT NULL,
+        duration_hours INT, lecture_hours INT, practice_hours INT
     );
     CREATE TABLE IF NOT EXISTS lectures (
         id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
         course_id UUID NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
-        title VARCHAR(255) NOT NULL, annotation TEXT, type VARCHAR(50)
+        title VARCHAR(255) NOT NULL, technical_requirements BOOLEAN,
+        annotation TEXT, type VARCHAR(50)
+    );
+    CREATE TABLE IF NOT EXISTS course_materials (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        lecture_id UUID NOT NULL REFERENCES lectures(id) ON DELETE CASCADE,
+        content_type VARCHAR(100), title VARCHAR(255), file_url VARCHAR(500), metadata JSON
     );
     CREATE TABLE IF NOT EXISTS schedule (
         id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
         class_id UUID NOT NULL REFERENCES lectures(id) ON DELETE CASCADE,
         group_id UUID NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
-        schedule_date DATE NOT NULL, period INT NOT NULL, room VARCHAR(50), teacher VARCHAR(150)
+        schedule_date DATE NOT NULL, period INT NOT NULL, room VARCHAR(50), lecturer VARCHAR(150)
     );
 
     -- Партиции ATTENDANCE
@@ -393,7 +400,7 @@ def create_attendance_partitions(pg_cur, start_year=2026, start_month=9, months_
 
 
 def init_es_index(es_client):
-    index_name = "lectures"
+    index_name = "course_materials"
     try:
         exists = es_client.indices.exists(index=index_name)
     except ApiError:
@@ -418,10 +425,10 @@ def init_es_index(es_client):
             "properties": {
                 "lecture_id": {"type": "keyword"},
                 "course_id": {"type": "keyword"},
+                "material_id": {"type": "keyword"},
+                "content_type": {"type": "keyword"},
                 "title": {"type": "text", "analyzer": "russian_analyzer", "fields": {"keyword": {"type": "keyword"}}},
-                "annotation": {"type": "text", "analyzer": "russian_analyzer"},
                 "content_text": {"type": "text", "analyzer": "russian_analyzer"},
-                "type": {"type": "keyword"},
                 "created_at": {"type": "date"}
             }
         }
@@ -443,7 +450,7 @@ def run_seeder():
     with psycopg2.connect(host=PG_HOST, port=PG_PORT, user=PG_USER, password=PG_PASS, dbname=PG_DB) as pg_conn:
         with pg_conn.cursor() as pg_cur:
             pg_cur.execute("""
-                DROP TABLE IF EXISTS attendance, schedule, lectures, classes, courses, 
+                DROP TABLE IF EXISTS attendance, schedule, course_materials, lectures, classes, courses, 
                 students, groups, department_specialties, specialities, departments, 
                 institutes, universities CASCADE;
             """)
@@ -463,7 +470,7 @@ def run_seeder():
                            "INSERT INTO specialities (id, name, code, degree_level, duration) VALUES %s ON CONFLICT (code) DO NOTHING",
                            data["specialities"])
             execute_values(pg_cur,
-                           "INSERT INTO department_specialties (id, department_id, specialty_id) VALUES %s ON CONFLICT DO NOTHING",
+                           "INSERT INTO department_specialties (id, department_id, speciality_id) VALUES %s ON CONFLICT DO NOTHING",
                            data["dept_specs"])
             execute_values(pg_cur,
                            "INSERT INTO groups (id, speciality_id, department_id, name, enrollment_year, curator) VALUES %s ON CONFLICT DO NOTHING",
@@ -472,19 +479,27 @@ def run_seeder():
                            "INSERT INTO students (id, group_id, first_name, second_name, email, phone, student_card_number, status) VALUES %s ON CONFLICT DO NOTHING",
                            data["students"])
             execute_values(pg_cur,
-                           "INSERT INTO courses (id, speciality_id, name, description, technical_requirements, semester, duration_hours, lecture_hours, practics_hours) VALUES %s ON CONFLICT DO NOTHING",
+                           "INSERT INTO courses (id, speciality_id, department_id, name, description, semester, duration_hours, lecture_hours, practice_hours) VALUES %s ON CONFLICT DO NOTHING",
                            data["courses"])
 
-            lectures_tuples = [(l["id"], l["course_id"], l["title"], l["annotation"], l["type"]) for l in
+            lectures_tuples = [(l["id"], l["course_id"], l["title"], l["technical_requirements"], l["annotation"], l["type"]) for l in
                                data["lectures"]]
             execute_values(pg_cur,
-                           "INSERT INTO lectures (id, course_id, title, annotation, type) VALUES %s ON CONFLICT DO NOTHING",
+                           "INSERT INTO lectures (id, course_id, title, technical_requirements, annotation, type) VALUES %s ON CONFLICT DO NOTHING",
                            lectures_tuples)
 
-            sched_tuples = [(s["id"], s["class_id"], s["group_id"], s["date"], s["period"], s["room"], s["teacher"]) for
+            material_tuples = [(
+                material["id"], material["lecture_id"], material["content_type"], material["title"],
+                material["file_url"], Json(material["metadata"])
+            ) for material in data["course_materials"]]
+            execute_values(pg_cur,
+                           "INSERT INTO course_materials (id, lecture_id, content_type, title, file_url, metadata) VALUES %s ON CONFLICT DO NOTHING",
+                           material_tuples)
+
+            sched_tuples = [(s["id"], s["class_id"], s["group_id"], s["date"], s["period"], s["room"], s["lecturer"]) for
                             s in data["schedules"]]
             execute_values(pg_cur,
-                           "INSERT INTO schedule (id, class_id, group_id, schedule_date, period, room, teacher) VALUES %s ON CONFLICT DO NOTHING",
+                           "INSERT INTO schedule (id, class_id, group_id, schedule_date, period, room, lecturer) VALUES %s ON CONFLICT DO NOTHING",
                            sched_tuples)
 
             execute_values(pg_cur,
@@ -519,14 +534,7 @@ def run_seeder():
                 )
     print("Neo4j готова!")
 
-    # 3. Redis (Очистка кэша)
-    print("\nЗаполнение Redis")
-    r_client = redis.Redis(host=REDIS_HOST, port=int(REDIS_PORT), password=REDIS_PASS, decode_responses=True)
-    r_client.flushall()
-    print("Кэш Redis очищен!")
-    r_client.close()
-
-    # 4. MongoDB (Исключительно коллекция university_hierarchy)
+    # 3. MongoDB (Исключительно коллекция university_hierarchy)
     print("\nЗаполнение MongoDB")
     mongo_uri = f"mongodb://{MONGO_USER}:{MONGO_PASS}@{MONGO_HOST}:{MONGO_PORT}/?authSource=admin"
     with MongoClient(mongo_uri) as mongo_client:
@@ -539,23 +547,25 @@ def run_seeder():
             res = mongo_collection.insert_many(data["mongo_hierarchy"])
     print("MongoDB готова!")
 
-    # 5. Elasticsearch
+    # 4. Elasticsearch
     print("\nЗаполнение Elasticsearch")
     with Elasticsearch([f"http://{ES_HOST_IP}:{ES_PORT}"], basic_auth=(ES_USER, ES_PASS)) as es_client:
         init_es_index(es_client)
 
         es_actions = []
-        for lec in data["lectures"]:
+        lectures_by_id = {lecture["id"]: lecture for lecture in data["lectures"]}
+        for material in data["course_materials"]:
+            lecture = lectures_by_id[material["lecture_id"]]
             es_actions.append({
-                "_index": "lectures",
-                "_id": lec["id"],
+                "_index": "course_materials",
+                "_id": material["id"],
                 "_source": {
-                    "lecture_id": lec["id"],
-                    "course_id": lec["course_id"],
-                    "title": lec["title"],
-                    "annotation": lec["annotation"],
-                    "content_text": lec["content"],
-                    "type": lec["type"],
+                    "material_id": material["id"],
+                    "lecture_id": material["lecture_id"],
+                    "course_id": lecture["course_id"],
+                    "content_type": material["content_type"],
+                    "title": material["title"],
+                    "content_text": material["metadata"]["text"],
                     "created_at": datetime.now().isoformat()
                 }
             })
