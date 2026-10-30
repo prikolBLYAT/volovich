@@ -9,6 +9,7 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 from elasticsearch import Elasticsearch
 from neo4j import GraphDatabase
+from pymongo import MongoClient
 import redis
 from dotenv import load_dotenv
 
@@ -23,6 +24,12 @@ PG_PORT = os.getenv("POSTGRES_PORT", "5432")
 PG_USER = os.getenv("POSTGRES_USER", "admin")
 PG_PASS = os.getenv("POSTGRES_PASSWORD", "superpassword123!")
 PG_DB = os.getenv("POSTGRES_DB", "postgres")
+
+MONGO_HOST = os.getenv("MONGO_HOST") or DEFAULT_HOST
+MONGO_PORT = os.getenv("MONGO_PORT", "27017")
+MONGO_USER = os.getenv("MONGO_INITDB_ROOT_USERNAME", "admin")
+MONGO_PASS = os.getenv("MONGO_INITDB_ROOT_PASSWORD")
+MONGO_DB = os.getenv("MONGO_INITDB_DATABASE", "db")
 
 ES_HOST = os.getenv("ES_HOST") or DEFAULT_HOST
 ES_PORT = os.getenv("ES_PORT", "9200")
@@ -140,7 +147,7 @@ def get_attendance_report(
                                           json_schema_extra={"example": 100.0}),
         limit: int = Query(10, ge=1, le=100, description="Лимит топа студентов", json_schema_extra={"example": 10})
 ):
-    # ШАГ 0: Проверка кэша в Redis
+    # Проверка периода и диапазона посещаемости.
     if period_start > period_end:
         raise HTTPException(status_code=400, detail="period_start не может быть позже period_end")
     if min_attendance_pct > max_attendance_pct:
@@ -179,7 +186,7 @@ def get_attendance_report(
 
     # ШАГ 2: В PostgreSQL определяем группы по связям курса и кафедры.
     group_sql = """
-    SELECT DISTINCT
+    SELECT
         g.id AS group_id,
         g.department_id,
         g.name AS group_name,
@@ -187,15 +194,17 @@ def get_attendance_report(
         sp.code AS speciality_code,
         sp.degree_level,
         d.name AS department_name
-    FROM groups g
-    JOIN courses c
-      ON c.speciality_id = g.speciality_id
-     AND c.department_id = g.department_id
-    JOIN lectures l ON l.course_id = c.id
+    FROM (
+        SELECT DISTINCT c.speciality_id, c.department_id
+        FROM lectures l
+        JOIN courses c ON c.id = l.course_id
+        WHERE l.id = ANY(%s::uuid[]) AND l.type = 'Lecture'
+    ) matched_courses
+    JOIN groups g
+      ON g.speciality_id = matched_courses.speciality_id
+     AND g.department_id = matched_courses.department_id
     JOIN specialities sp ON sp.id = g.speciality_id
-    JOIN departments d ON d.id = g.department_id
-    WHERE l.id = ANY(%s::uuid[])
-      AND l.type = 'Lecture';
+    JOIN departments d ON d.id = g.department_id;
     """
     with closing(get_pg_conn()) as pg_conn:
         with pg_conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -209,49 +218,22 @@ def get_attendance_report(
             matching_lectures_count=0, students=[]
         )
 
-    # ШАГ 3: Из MongoDB получаем вуз и институт для кафедр подходящих групп.
-    department_hierarchy = {}
-    target_department_ids = {str(row["department_id"]) for row in group_rows}
-    mongo_uri = f"mongodb://{MONGO_USER}:{MONGO_PASS}@{MONGO_HOST}:{MONGO_PORT}/?authSource=admin"
-    try:
-        with MongoClient(mongo_uri, serverSelectionTimeoutMS=3000) as mongo_client:
-            hierarchy_docs = mongo_client[MONGO_DB]["university_hierarchy"].find(
-                {"institutes.departments.department_id": {"$in": list(target_department_ids)}},
-                {"_id": 0, "name": 1, "institutes": 1}
-            )
-            for university in hierarchy_docs:
-                for institute in university.get("institutes", []):
-                    for department in institute.get("departments", []):
-                        department_id = department.get("department_id")
-                        if department_id in target_department_ids:
-                            department_hierarchy[department_id] = {
-                                "department_name": department.get("name"),
-                                "institute_name": institute.get("name"),
-                                "university_name": university.get("name")
-                            }
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Ошибка чтения иерархии MongoDB: {str(e)}"
-        )
-
-    # ШАГ 4: Из Neo4j получаем занятия и студентов соответствующих групп.
+    # ШАГ 3: Из Neo4j получаем занятия и студентов соответствующих групп.
     group_ids = [str(row["group_id"]) for row in group_rows]
     student_schedules = {}
     scheduled_lecture_ids = set()
     try:
         with neo4j_driver.session() as session:
             cypher_query = """
-            MATCH (st:Student)-[:BELONGS_TO]->(g:Group)
-                  -[:HAS_SCHEDULE]->(sc:Schedule)-[:FOR_LECTURE]->(l:Lecture)
-                  -[:OF_COURSE]->(c:Course)
+            MATCH (l:Lecture)<-[:FOR_LECTURE]-(sc:Schedule)<-[:HAS_SCHEDULE]-(g:Group)
             WHERE sc.date >= $p_start AND sc.date <= $p_end
               AND g.id IN $group_ids
               AND l.id IN $lecture_ids
               AND l.type = 'Lecture'
-            RETURN st.id AS student_id, g.id AS group_id,
-                   collect(DISTINCT sc.id) AS schedule_ids,
-                   collect(DISTINCT l.id) AS lecture_ids
+            WITH g, collect(DISTINCT sc.id) AS schedule_ids,
+                 collect(DISTINCT l.id) AS lecture_ids
+            MATCH (st:Student)-[:BELONGS_TO]->(g)
+            RETURN st.id AS student_id, g.id AS group_id, schedule_ids, lecture_ids
             """
             res = session.run(
                 cypher_query,
@@ -279,7 +261,7 @@ def get_attendance_report(
             matching_lectures_count=len(scheduled_lecture_ids), students=[]
         )
 
-    # ШАГ 5: По полученным расписаниям PostgreSQL считает посещения.
+    # ШАГ 4: По полученным расписаниям PostgreSQL считает посещения.
     student_ids = list(student_schedules)
     schedule_ids = list({
         schedule_id
@@ -289,18 +271,15 @@ def get_attendance_report(
     attendance_stats = {}
     if schedule_ids:
         attendance_sql = """
-        SELECT student_id, SUM(mark)::int AS attended_classes
-        FROM (
-            SELECT a.student_id, a.schedule_id, MAX(a.mark) AS mark
-            FROM attendance a
-            JOIN schedule sc ON sc.id = a.schedule_id
-            JOIN students st ON st.id = a.student_id AND st.group_id = sc.group_id
-            WHERE a.schedule_id = ANY(%s::uuid[])
-              AND a.student_id = ANY(%s::uuid[])
-              AND a.date BETWEEN %s AND %s
-            GROUP BY a.student_id, a.schedule_id
-        ) per_class
-        GROUP BY student_id;
+        SELECT a.student_id, COUNT(DISTINCT a.schedule_id) AS attended_classes
+        FROM attendance a
+        JOIN schedule sc ON sc.id = a.schedule_id
+        JOIN students st ON st.id = a.student_id AND st.group_id = sc.group_id
+        WHERE a.schedule_id = ANY(%s::uuid[])
+          AND a.student_id = ANY(%s::uuid[])
+          AND a.date BETWEEN %s AND %s
+          AND a.mark = 1
+        GROUP BY a.student_id;
         """
         with closing(get_pg_conn()) as pg_conn:
             with pg_conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -337,7 +316,7 @@ def get_attendance_report(
             matching_lectures_count=len(scheduled_lecture_ids), students=[]
         )
 
-    # ШАГ 6: Профили студентов читаем из Redis по student_id.
+    # ШАГ 5: Профили студентов читаем из Redis по student_id.
     top_student_ids = [item["student_id"] for item in ranked_students]
     student_profiles = {}
     try:
@@ -385,6 +364,36 @@ def get_attendance_report(
                         redis_client.setex(student_id, 86400, json.dumps(profile, ensure_ascii=False))
                     except Exception:
                         pass
+
+    # ШАГ 6: Из MongoDB получаем вуз и институт для кафедр подходящих групп.
+    department_hierarchy = {}
+    result_group_ids = {item["group_id"] for item in ranked_students}
+    target_department_ids = {
+        str(row["department_id"]) for row in group_rows
+        if str(row["group_id"]) in result_group_ids
+    }
+    mongo_uri = f"mongodb://{MONGO_USER}:{MONGO_PASS}@{MONGO_HOST}:{MONGO_PORT}/?authSource=admin"
+    try:
+        with MongoClient(mongo_uri, serverSelectionTimeoutMS=3000) as mongo_client:
+            hierarchy_docs = mongo_client[MONGO_DB]["university_hierarchy"].find(
+                {"institutes.departments.department_id": {"$in": list(target_department_ids)}},
+                {"_id": 0, "name": 1, "institutes": 1}
+            )
+            for university in hierarchy_docs:
+                for institute in university.get("institutes", []):
+                    for department in institute.get("departments", []):
+                        department_id = department.get("department_id")
+                        if department_id in target_department_ids:
+                            department_hierarchy[department_id] = {
+                                "department_name": department.get("name"),
+                                "institute_name": institute.get("name"),
+                                "university_name": university.get("name")
+                            }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Ошибка чтения иерархии MongoDB: {str(e)}"
+        )
 
     # ШАГ 7: Собираем профиль из Redis, атрибуты группы из PostgreSQL и вуз из MongoDB.
     students_res = []
