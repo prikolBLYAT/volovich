@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+psycopg2-binary
+elasticsearch==8.11.0
+neo4j
+redis
+pymongo
+PyJWT
+httpx
+python-dotenv
+faker
+python-multipart

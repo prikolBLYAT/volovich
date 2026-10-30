@@ -1,0 +1,46 @@
+services:
+  lab1-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.lab1
+    container_name: service_lab1
+    env_file:
+      - .env
+    ports:
+      - "8001:8001"
+    networks:
+      - app-net
+
+  lab2-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.lab2
+    container_name: service_lab2
+    env_file:
+      - .env
+    ports:
+      - "8002:8002"
+    networks:
+      - app-net
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.gateway
+    container_name: api_gateway
+    env_file:
+      - .env
+    environment:
+      - LAB1_URL=http://lab1-service:8001
+      - LAB2_URL=http://lab2-service:8002
+    ports:
+      - "8000:8000"
+    depends_on:
+      - lab1-service
+      - lab2-service
+    networks:
+      - app-net
+
+networks:
+  app-net:
+    driver: bridge
