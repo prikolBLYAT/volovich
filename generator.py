@@ -96,6 +96,7 @@ def generate_random_data():
     mongo_hierarchy_docs = []
     neo_nodes = []
     neo_relations = []
+    occupied_group_slots = set()
 
     base_date = datetime(2026, 9, 1).date()
     spec_counter = 1
@@ -230,22 +231,27 @@ def generate_random_data():
                                 for p in range(1, CLASSES_PER_DAY + 1):
                                     selected_lec = random.choice(course_lectures)
                                     selected_grp = random.choice(group_ids)
+                                    scheduled_date = sch_date
+                                    while (selected_grp, scheduled_date, p) in occupied_group_slots:
+                                        scheduled_date += timedelta(days=1)
+                                    occupied_group_slots.add((selected_grp, scheduled_date, p))
                                     sch_id = str(uuid.uuid4())
                                     teacher_name = fake.name_male()
+                                    room = f"Аудитория {random.randint(100, 599)}"
 
                                     schedules.append({
                                         "id": sch_id,
                                         "class_id": selected_lec["id"],
                                         "group_id": selected_grp,
-                                        "date": sch_date,
+                                        "date": scheduled_date,
                                         "period": p,
-                                        "room": f"Аудитория {random.randint(100, 599)}",
+                                        "room": room,
                                         "lecturer": teacher_name
                                     })
 
                                     neo_nodes.append(("Schedule", {
-                                        "id": sch_id, "date": str(sch_date), "period": p,
-                                        "room": f"Аудитория {random.randint(100, 599)}"
+                                        "id": sch_id, "date": str(scheduled_date), "period": p,
+                                        "room": room
                                     }))
                                     neo_relations.append((selected_grp, sch_id, "HAS_SCHEDULE"))
                                     neo_relations.append((sch_id, selected_lec["id"], "FOR_LECTURE"))
@@ -256,7 +262,7 @@ def generate_random_data():
                                         att_id = str(uuid.uuid4())
                                         mark_val = random.choice([0, 1])
                                         attendances.append((
-                                            att_id, sch_id, st[0], sch_date, p, mark_val, now_ts
+                                            att_id, sch_id, st[0], scheduled_date, p, mark_val, now_ts
                                         ))
 
 
@@ -550,6 +556,9 @@ def run_seeder():
     # 4. Elasticsearch
     print("\nЗаполнение Elasticsearch")
     with Elasticsearch([f"http://{ES_HOST_IP}:{ES_PORT}"], basic_auth=(ES_USER, ES_PASS)) as es_client:
+        # PostgreSQL и Neo4j выше пересозданы с новыми UUID; старые материалы больше не актуальны.
+        if es_client.indices.exists(index="course_materials"):
+            es_client.indices.delete(index="course_materials")
         init_es_index(es_client)
 
         es_actions = []
@@ -570,8 +579,9 @@ def run_seeder():
                 }
             })
         if es_actions:
-            helpers.bulk(es_client, es_actions)
+            helpers.bulk(es_client, es_actions, refresh="wait_for")
     print("Elasticsearch готова!")
+    return data
 
 
 if __name__ == "__main__":

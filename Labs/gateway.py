@@ -12,6 +12,7 @@ load_dotenv(env_path if os.path.exists(env_path) else None)
 
 LAB1_URL = os.getenv("LAB1_URL", "http://lab1-service:8001")
 LAB2_URL = os.getenv("LAB2_URL", "http://lab2-service:8002")
+LAB3_URL = os.getenv("LAB3_URL", "http://lab3-service:8003")
 
 JWT_SECRET = os.getenv("JWT_SECRET")
 JWT_ALGORITHM = "HS256"
@@ -111,6 +112,33 @@ async def proxy_lab1_report(
         if response.status_code != 200:
             raise HTTPException(status_code=response.status_code, detail=response.text)
 
+        return response.json()
+
+
+@app.get(
+    "/api/v1/labs/lab3/hours-report",
+    tags=["Лабораторная работа №3"],
+    summary="Плановые и посещённые часы лекций по группе"
+)
+async def proxy_lab3_report(
+    request: Request,
+    group_id: str = Query(..., description="Идентификатор группы"),
+    period_start: str = Query(..., description="Начало периода (YYYY-MM-DD)"),
+    period_end: str = Query(..., description="Конец периода (YYYY-MM-DD)"),
+    _user: dict = Depends(verify_jwt)
+):
+    auth_header = request.headers.get("Authorization")
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        try:
+            response = await client.get(
+                f"{LAB3_URL}/api/v1/labs/lab3/hours-report",
+                params=dict(request.query_params),
+                headers={"Authorization": auth_header} if auth_header else {}
+            )
+        except httpx.RequestError:
+            raise HTTPException(status_code=503, detail="Сервис Лаб №3 недоступен")
+        if response.status_code != 200:
+            raise HTTPException(status_code=response.status_code, detail=response.text)
         return response.json()
 
 

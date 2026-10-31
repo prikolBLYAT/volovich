@@ -23,6 +23,18 @@ services:
     networks:
       - app-net
 
+  lab3-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.lab3
+    container_name: service_lab3
+    env_file:
+      - .env
+    ports:
+      - "8003:8003"
+    networks:
+      - app-net
+
   api-gateway:
     build:
       context: .
@@ -33,11 +45,13 @@ services:
     environment:
       - LAB1_URL=http://lab1-service:8001
       - LAB2_URL=http://lab2-service:8002
+      - LAB3_URL=http://lab3-service:8003
     ports:
       - "8000:8000"
     depends_on:
       - lab1-service
       - lab2-service
+      - lab3-service
     networks:
       - app-net
 
