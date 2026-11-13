@@ -1,0 +1,21 @@
+%%{init: {"theme": "default", "themeVariables": {"fontFamily": "Arial, sans-serif"}, "flowchart": {"curve": "stepAfter"}}}%%
+C4Container
+    title ЛР 1 — C4 C2: Посещаемость лекций
+    Person(analyst, "Аналитик", "Клиент HTTP API")
+    System_Boundary(system, "Аналитическая система — срез ЛР 1") {
+        Container(gateway, "api-gateway", "Python / FastAPI / PyJWT / httpx", "Локальный login, JWT HS256, проксирование; :8000")
+        Container(service, "lab1-service", "Python / FastAPI / Pydantic", "Посещаемость лекций; :8001")
+        ContainerDb(pg, "PostgreSQL", "PostgreSQL", "Группы, специальности, кафедры, посещения; fallback профилей")
+        ContainerDb(neo, "Neo4j", "Neo4j", "Лекции, расписания, группы и студенты")
+        ContainerDb(mongo, "MongoDB", "MongoDB", "university_hierarchy: институты и вузы")
+        ContainerDb(redis, "Redis", "Redis", "JSON-профили студентов; ключ UUID; TTL 86400 с")
+        ContainerDb(es, "Elasticsearch", "Elasticsearch", "course_materials: полнотекстовые материалы")
+    }
+    Rel(analyst, gateway, "Login и запрос отчёта с Bearer JWT; ответ JSON", "HTTP :8000")
+    Rel(gateway, service, "GET с query и Authorization; ответ JSON", "HTTP / httpx; 30 с")
+    Rel(analyst, service, "Прямой GET без JWT — обход шлюза", "HTTP :8001")
+    Rel(service, pg, "Группы, специальности, кафедры, посещения; fallback профилей", "SQL / psycopg2")
+    Rel(service, neo, "Лекции, расписания, группы и студенты", "Cypher / Bolt")
+    Rel(service, mongo, "university_hierarchy: институты и вузы", "MongoDB / PyMongo")
+    Rel(service, redis, "JSON-профили студентов; ключ UUID; TTL 86400 с", "MGET / SETEX")
+    Rel(service, es, "course_materials: полнотекстовые материалы", "HTTP / multi_match")

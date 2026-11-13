@@ -1,0 +1,19 @@
+%%{init: {"theme": "default", "themeVariables": {"fontFamily": "Arial, sans-serif"}, "flowchart": {"curve": "stepAfter"}}}%%
+C4Container
+    title ЛР 3 — C4 C2: Плановые и посещённые часы
+    Person(analyst, "Аналитик", "Клиент HTTP API")
+    System_Boundary(system, "Аналитическая система — срез ЛР 3") {
+        Container(gateway, "api-gateway", "Python / FastAPI / PyJWT / httpx", "Локальный login, JWT HS256, проксирование; :8000")
+        Container(service, "lab3-service", "Python / FastAPI / Pydantic", "Плановые и посещённые часы; :8003")
+        ContainerDb(pg, "PostgreSQL", "PostgreSQL", "Группа, курсы кафедры, посещения; fallback профилей")
+        ContainerDb(neo, "Neo4j", "Neo4j", "Состав группы и расписания лекций по курсам")
+        ContainerDb(mongo, "MongoDB", "MongoDB", "university_hierarchy: институт и вуз группы")
+        ContainerDb(redis, "Redis", "Redis", "JSON-профили студентов; ключ UUID; TTL 86400 с")
+    }
+    Rel(analyst, gateway, "Login и запрос отчёта с Bearer JWT; ответ JSON", "HTTP :8000")
+    Rel(gateway, service, "GET с query и Authorization; ответ JSON", "HTTP / httpx; 30 с")
+    Rel(analyst, service, "Прямой GET без JWT — обход шлюза", "HTTP :8003")
+    Rel(service, pg, "Группа, курсы кафедры, посещения; fallback профилей", "SQL / psycopg2")
+    Rel(service, neo, "Состав группы и расписания лекций по курсам", "Cypher / Bolt")
+    Rel(service, mongo, "university_hierarchy: институт и вуз группы", "MongoDB / PyMongo")
+    Rel(service, redis, "JSON-профили студентов; ключ UUID; TTL 86400 с", "MGET / SETEX")

@@ -1,0 +1,22 @@
+%%{init: {"theme": "default", "themeVariables": {"fontFamily": "Arial, sans-serif"}, "flowchart": {"curve": "stepAfter"}}}%%
+C4Component
+    title ЛР 3 — C4 C3: компоненты шлюза и сервиса
+    Container_Boundary(gw, "api-gateway — gateway.py") {
+        Component(auth, "login / verify_jwt", "Функции + Depends / PyJWT", "Проверка локальных credentials; выпуск JWT на 12 ч; подпись и exp")
+        Component(proxy, "proxy_lab3_report", "Async handler / httpx", "Query и Authorization; timeout 30 с; JSON и ошибки upstream")
+    }
+    Container_Boundary(svc, "lab3-service — lab3.py") {
+        Component(handler, "get_hours_report", "FastAPI handler", "Валидация query; оркестрация чтений и сборки отчёта")
+        Component(logic, "Расчёт и обогащение", "Логические участки handler, НЕ отдельные классы", "Состав и расписания; курсы кафедры; уникальные посещения; занятия × 2")
+        Component(helper, "get_pg_conn", "Функции подключения", "Соединения с ограничением времени; HTTP 503 при недоступности")
+        Component(dto, "Схемы ответа", "Pydantic BaseModel", "GroupInfoDTO, CourseHoursDTO, StudentHoursDTO, GroupHoursReportDTO")
+        Component(profiles, "get_student_profiles", "Функция", "MGET; проверка профиля и группы; PG fallback; SETEX; проверка согласованности")
+    }
+    Rel(proxy, auth, "Depends: проверяет Bearer JWT до вызова сервиса")
+    Rel(proxy, handler, "HTTP GET; передаёт query и Authorization; сервис JWT не проверяет")
+    Rel(handler, logic, "Выполняет встроенные логические участки, не сетевой вызов")
+    Rel(handler, helper, "Открывает подключения")
+    Rel(handler, dto, "Создаёт типизированный JSON-ответ")
+    Rel(handler, profiles, "UUID студентов и группы → профили")
+    Rel(profiles, helper, "PostgreSQL при промахе кэша")
+    UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="1")

@@ -1,0 +1,17 @@
+%%{init: {"theme": "default", "themeVariables": {"fontFamily": "Arial, sans-serif"}, "flowchart": {"curve": "stepAfter"}}}%%
+C4Container
+    title ЛР 2 — C4 C2: Вместимость аудиторий
+    Person(analyst, "Аналитик", "Клиент HTTP API")
+    System_Boundary(system, "Аналитическая система — срез ЛР 2") {
+        Container(gateway, "api-gateway", "Python / FastAPI / PyJWT / httpx", "Локальный login, JWT HS256, проксирование; :8000")
+        Container(service, "lab2-service", "Python / FastAPI / Pydantic", "Вместимость аудиторий; :8002")
+        ContainerDb(pg, "PostgreSQL", "PostgreSQL", "Курсы, лекции, специальности, кафедры, институты")
+        ContainerDb(neo, "Neo4j", "Neo4j", "Расписания, группы набора и число студентов")
+        ContainerDb(mongo, "MongoDB", "MongoDB", "university_hierarchy: названия вузов")
+    }
+    Rel(analyst, gateway, "Login и запрос отчёта с Bearer JWT; ответ JSON", "HTTP :8000")
+    Rel(gateway, service, "GET с query и Authorization; ответ JSON", "HTTP / httpx; 30 с")
+    Rel(analyst, service, "Прямой GET без JWT — обход шлюза", "HTTP :8002")
+    Rel(service, pg, "Курсы, лекции, специальности, кафедры, институты", "SQL / psycopg2")
+    Rel(service, neo, "Расписания, группы набора и число студентов", "Cypher / Bolt")
+    Rel(service, mongo, "university_hierarchy: названия вузов", "MongoDB / PyMongo")

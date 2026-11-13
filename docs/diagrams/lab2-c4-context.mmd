@@ -1,0 +1,9 @@
+%%{init: {"theme": "default", "themeVariables": {"fontFamily": "Arial, sans-serif"}, "flowchart": {"curve": "stepAfter"}}}%%
+C4Context
+    title ЛР 2 — C4 C1: Вместимость аудиторий
+    Person(analyst, "Аналитик", "Пользователь HTTP API; отдельный UI в коде отсутствует")
+    Enterprise_Boundary(project, "Граница проекта") {
+        System(system, "Аналитическая система лабораторных работ", "API Gateway, сервисы ЛР 1–3 и используемые хранилища; показан сценарий ЛР 2")
+    }
+    Rel(analyst, system, "Получает JWT; запрашивает отчёт; получает JSON или ошибку", "HTTP :8000")
+    Rel(analyst, system, "Может вызвать ЛР 2 напрямую без проверки JWT", "HTTP :8002; опубликованный порт")

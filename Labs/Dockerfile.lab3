@@ -8,8 +8,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY app_lab3.py .
+COPY lab3.py .
 
 EXPOSE 8003
 
-CMD ["uvicorn", "app_lab3:app", "--host", "0.0.0.0", "--port", "8003"]
+CMD ["uvicorn", "lab3:app", "--host", "0.0.0.0", "--port", "8003"]

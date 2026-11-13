@@ -1,0 +1,19 @@
+%%{init: {"theme": "default", "themeVariables": {"fontFamily": "Arial, sans-serif"}, "flowchart": {"curve": "stepAfter"}}}%%
+C4Component
+    title ЛР 2 — C4 C3: компоненты шлюза и сервиса
+    Container_Boundary(gw, "api-gateway — gateway.py") {
+        Component(auth, "login / verify_jwt", "Функции + Depends / PyJWT", "Проверка локальных credentials; выпуск JWT на 12 ч; подпись и exp")
+        Component(proxy, "proxy_lab2_report", "Async handler / httpx", "Query и Authorization; timeout 30 с; JSON и ошибки upstream")
+    }
+    Container_Boundary(svc, "lab2-service — lab2.py") {
+        Component(handler, "get_audience_report", "FastAPI handler", "Валидация query; оркестрация чтений и сборки отчёта")
+        Component(logic, "Расчёт и обогащение", "Логические участки handler, НЕ отдельные классы", "Отбор лекций; счётчики групп; max вместимости; иерархия вузов")
+        Component(helper, "get_pg_conn", "Функции подключения", "Соединения с ограничением времени; HTTP 503 при недоступности")
+        Component(dto, "Схемы ответа", "Pydantic BaseModel", "LectureAudienceInfoDTO, CourseAudienceReportDTO")
+    }
+    Rel(proxy, auth, "Depends: проверяет Bearer JWT до вызова сервиса")
+    Rel(proxy, handler, "HTTP GET; передаёт query и Authorization; сервис JWT не проверяет")
+    Rel(handler, logic, "Выполняет встроенные логические участки, не сетевой вызов")
+    Rel(handler, helper, "Открывает подключения")
+    Rel(handler, dto, "Создаёт типизированный JSON-ответ")
+    UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="1")

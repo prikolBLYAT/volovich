@@ -164,7 +164,7 @@ def get_attendance_report(
                         "query": term,
                         "fields": ["title^3", "content_text"]
                     }
-                },2
+                },
                 "_source": ["lecture_id"]
             },
             size=10000
