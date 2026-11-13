@@ -153,7 +153,7 @@ def get_attendance_report(
     if min_attendance_pct > max_attendance_pct:
         raise HTTPException(status_code=400, detail="min_attendance_pct не может быть больше max_attendance_pct")
 
-    # ШАГ 1: Полнотекстовый поиск в материалах лекций в Elasticsearch
+    # ШАГ 1: Поиск в материалах лекций в Elasticsearch
     es = get_es_client()
     try:
         es_res = es.search(
@@ -164,7 +164,7 @@ def get_attendance_report(
                         "query": term,
                         "fields": ["title^3", "content_text"]
                     }
-                },
+                },2
                 "_source": ["lecture_id"]
             },
             size=10000
@@ -184,42 +184,7 @@ def get_attendance_report(
             matching_lectures_count=0, students=[]
         )
 
-    # ШАГ 2: В PostgreSQL определяем группы по связям курса и кафедры.
-    group_sql = """
-    SELECT
-        g.id AS group_id,
-        g.department_id,
-        g.name AS group_name,
-        sp.name AS speciality_name,
-        sp.code AS speciality_code,
-        sp.degree_level,
-        d.name AS department_name
-    FROM (
-        SELECT DISTINCT c.speciality_id, c.department_id
-        FROM lectures l
-        JOIN courses c ON c.id = l.course_id
-        WHERE l.id = ANY(%s::uuid[]) AND l.type = 'Lecture'
-    ) matched_courses
-    JOIN groups g
-      ON g.speciality_id = matched_courses.speciality_id
-     AND g.department_id = matched_courses.department_id
-    JOIN specialities sp ON sp.id = g.speciality_id
-    JOIN departments d ON d.id = g.department_id;
-    """
-    with closing(get_pg_conn()) as pg_conn:
-        with pg_conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(group_sql, (lecture_ids,))
-            group_rows = cur.fetchall()
-
-    if not group_rows:
-        return ReportResponseDTO(
-            term=term, period_start=period_start, period_end=period_end,
-            min_attendance_pct=min_attendance_pct, max_attendance_pct=max_attendance_pct,
-            matching_lectures_count=0, students=[]
-        )
-
-    # ШАГ 3: Из Neo4j получаем занятия и студентов соответствующих групп.
-    group_ids = [str(row["group_id"]) for row in group_rows]
+    # ШАГ 2: В Neo4j находим группы по расписанию найденных лекций и их студентов
     student_schedules = {}
     scheduled_lecture_ids = set()
     try:
@@ -227,7 +192,6 @@ def get_attendance_report(
             cypher_query = """
             MATCH (l:Lecture)<-[:FOR_LECTURE]-(sc:Schedule)<-[:HAS_SCHEDULE]-(g:Group)
             WHERE sc.date >= $p_start AND sc.date <= $p_end
-              AND g.id IN $group_ids
               AND l.id IN $lecture_ids
               AND l.type = 'Lecture'
             WITH g, collect(DISTINCT sc.id) AS schedule_ids,
@@ -238,7 +202,6 @@ def get_attendance_report(
             res = session.run(
                 cypher_query,
                 lecture_ids=lecture_ids,
-                group_ids=group_ids,
                 p_start=str(period_start),
                 p_end=str(period_end)
             )
@@ -261,7 +224,7 @@ def get_attendance_report(
             matching_lectures_count=len(scheduled_lecture_ids), students=[]
         )
 
-    # ШАГ 4: По полученным расписаниям PostgreSQL считает посещения.
+    # ШАГ 3: По полученным расписаниям PostgreSQL считает посещения
     student_ids = list(student_schedules)
     schedule_ids = list({
         schedule_id
@@ -316,6 +279,27 @@ def get_attendance_report(
             matching_lectures_count=len(scheduled_lecture_ids), students=[]
         )
 
+    # ШАГ 4: PostgreSQL возвращает атрибуты только групп итогового списка
+    result_group_ids = sorted({item["group_id"] for item in ranked_students})
+    group_sql = """
+    SELECT
+        g.id AS group_id,
+        g.department_id,
+        g.name AS group_name,
+        sp.name AS speciality_name,
+        sp.code AS speciality_code,
+        sp.degree_level,
+        d.name AS department_name
+    FROM groups g
+    JOIN specialities sp ON sp.id = g.speciality_id
+    JOIN departments d ON d.id = g.department_id
+    WHERE g.id = ANY(%s::uuid[]);
+    """
+    with closing(get_pg_conn()) as pg_conn:
+        with pg_conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(group_sql, (result_group_ids,))
+            group_rows = cur.fetchall()
+
     # ШАГ 5: Профили студентов читаем из Redis по student_id.
     top_student_ids = [item["student_id"] for item in ranked_students]
     student_profiles = {}
@@ -365,12 +349,10 @@ def get_attendance_report(
                     except Exception:
                         pass
 
-    # ШАГ 6: Из MongoDB получаем вуз и институт для кафедр подходящих групп.
+    # ШАГ 6: Из MongoDB получаем вуз и институт для кафедр подходящих групп
     department_hierarchy = {}
-    result_group_ids = {item["group_id"] for item in ranked_students}
     target_department_ids = {
         str(row["department_id"]) for row in group_rows
-        if str(row["group_id"]) in result_group_ids
     }
     mongo_uri = f"mongodb://{MONGO_USER}:{MONGO_PASS}@{MONGO_HOST}:{MONGO_PORT}/?authSource=admin"
     try:
@@ -395,13 +377,13 @@ def get_attendance_report(
             detail=f"Ошибка чтения иерархии MongoDB: {str(e)}"
         )
 
-    # ШАГ 7: Собираем профиль из Redis, атрибуты группы из PostgreSQL и вуз из MongoDB.
+    # ШАГ 7: Собираем профиль из Redis, атрибуты группы из PostgreSQL и вуз из MongoDB
     students_res = []
     groups_by_id = {str(row["group_id"]): row for row in group_rows}
     for stats in ranked_students:
         st_id = stats["student_id"]
         prof = student_profiles.get(st_id)
-        group = groups_by_id.get(prof.get("group_id")) if prof else None
+        group = groups_by_id.get(stats["group_id"])
         if prof and group:
             hierarchy = department_hierarchy.get(str(group["department_id"]), {})
             students_res.append(FullStudentInfoDTO(

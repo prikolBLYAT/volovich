@@ -135,7 +135,7 @@ def get_audience_report(
         courses.setdefault(course_id, {"info": row, "lectures": []})["lectures"].append(row)
     lecture_ids = [str(row["lecture_id"]) for row in lecture_rows]
 
-    # 2. Neo4j: группы выбранного набора и их студенты, без дублирования по занятиям.
+    # 2. Neo4j: группы выбранного набора со студентами, без дублирования по занятиям.
     lecture_stats = {}
     course_groups = {}
     try:
@@ -150,7 +150,7 @@ def get_audience_report(
                 WHERE c.id IN $course_ids AND l.id IN $lecture_ids
                   AND g.enrollment_year = $enrollment_year
                 WITH c, l, g, count(DISTINCT sc) AS scheduled_count
-                OPTIONAL MATCH (st:Student)-[:BELONGS_TO]->(g)
+                MATCH (st:Student)-[:BELONGS_TO]->(g)
                 RETURN c.id AS course_id, l.id AS lecture_id, g.id AS group_id,
                        scheduled_count, count(DISTINCT st) AS listeners_count
                 """
@@ -218,17 +218,22 @@ def get_audience_report(
         lectures = []
         for lecture in course["lectures"]:
             lecture_id = str(lecture["lecture_id"])
-            stats = lecture_stats.get(lecture_id, {})
+            # В отчёт входят только лекции с занятиями и слушателями выбранного набора.
+            stats = lecture_stats.get(lecture_id)
+            if not stats or stats["scheduled_count"] <= 0 or stats["listeners_count"] <= 0:
+                continue
             lectures.append(LectureAudienceInfoDTO(
                 lecture_id=lecture_id,
                 lecture_title=lecture["lecture_title"],
                 annotation=lecture["annotation"] or "",
                 lecture_type=lecture["lecture_type"],
                 technical_requirements=lecture["technical_requirements"],
-                scheduled_classes_count=stats.get("scheduled_count", 0),
-                total_listeners_count=stats.get("listeners_count", 0),
-                required_room_capacity=stats.get("room_capacity", 0)
+                scheduled_classes_count=stats["scheduled_count"],
+                total_listeners_count=stats["listeners_count"],
+                required_room_capacity=stats["room_capacity"]
             ))
+        if not lectures:
+            continue
         reports.append(CourseAudienceReportDTO(
             course_id=course_id,
             course_name=row["course_name"],

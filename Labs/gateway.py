@@ -77,7 +77,6 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
     )
 
 
-# --- Лаба №1 ---
 
 # --- Лаба №1 ---
 @app.get(
@@ -115,31 +114,7 @@ async def proxy_lab1_report(
         return response.json()
 
 
-@app.get(
-    "/api/v1/labs/lab3/hours-report",
-    tags=["Лабораторная работа №3"],
-    summary="Плановые и посещённые часы лекций по группе"
-)
-async def proxy_lab3_report(
-    request: Request,
-    group_id: str = Query(..., description="Идентификатор группы"),
-    period_start: str = Query(..., description="Начало периода (YYYY-MM-DD)"),
-    period_end: str = Query(..., description="Конец периода (YYYY-MM-DD)"),
-    _user: dict = Depends(verify_jwt)
-):
-    auth_header = request.headers.get("Authorization")
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        try:
-            response = await client.get(
-                f"{LAB3_URL}/api/v1/labs/lab3/hours-report",
-                params=dict(request.query_params),
-                headers={"Authorization": auth_header} if auth_header else {}
-            )
-        except httpx.RequestError:
-            raise HTTPException(status_code=503, detail="Сервис Лаб №3 недоступен")
-        if response.status_code != 200:
-            raise HTTPException(status_code=response.status_code, detail=response.text)
-        return response.json()
+
 
 
 # ---Лаба №2 ---
@@ -170,4 +145,30 @@ async def proxy_lab2_report(
         if response.status_code != 200:
             raise HTTPException(status_code=response.status_code, detail=response.text)
 
+        return response.json()
+
+@app.get(
+    "/api/v1/labs/lab3/hours-report",
+    tags=["Лабораторная работа №3"],
+    summary="Плановые и посещённые часы лекций по группе"
+)
+async def proxy_lab3_report(
+    request: Request,
+    group_id: str = Query(..., description="Идентификатор группы"),
+    period_start: str = Query(..., description="Начало периода (YYYY-MM-DD)"),
+    period_end: str = Query(..., description="Конец периода (YYYY-MM-DD)"),
+    _user: dict = Depends(verify_jwt)
+):
+    auth_header = request.headers.get("Authorization")
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        try:
+            response = await client.get(
+                f"{LAB3_URL}/api/v1/labs/lab3/hours-report",
+                params=dict(request.query_params),
+                headers={"Authorization": auth_header} if auth_header else {}
+            )
+        except httpx.RequestError:
+            raise HTTPException(status_code=503, detail="Сервис Лаб №3 недоступен")
+        if response.status_code != 200:
+            raise HTTPException(status_code=response.status_code, detail=response.text)
         return response.json()
