@@ -1,17 +1,26 @@
-%%{init: {"theme": "default", "themeVariables": {"fontFamily": "Arial, sans-serif"}, "flowchart": {"curve": "stepAfter"}}}%%
-C4Container
-    title ЛР 2 — C4 C2: Вместимость аудиторий
-    Person(analyst, "Аналитик", "Клиент HTTP API")
-    System_Boundary(system, "Аналитическая система — срез ЛР 2") {
-        Container(gateway, "api-gateway", "Python / FastAPI / PyJWT / httpx", "Локальный login, JWT HS256, проксирование; :8000")
-        Container(service, "lab2-service", "Python / FastAPI / Pydantic", "Вместимость аудиторий; :8002")
-        ContainerDb(pg, "PostgreSQL", "PostgreSQL", "Курсы, лекции, специальности, кафедры, институты")
-        ContainerDb(neo, "Neo4j", "Neo4j", "Расписания, группы набора и число студентов")
-        ContainerDb(mongo, "MongoDB", "MongoDB", "university_hierarchy: названия вузов")
-    }
-    Rel(analyst, gateway, "Login и запрос отчёта с Bearer JWT; ответ JSON", "HTTP :8000")
-    Rel(gateway, service, "GET с query и Authorization; ответ JSON", "HTTP / httpx; 30 с")
-    Rel(analyst, service, "Прямой GET без JWT — обход шлюза", "HTTP :8002")
-    Rel(service, pg, "Курсы, лекции, специальности, кафедры, институты", "SQL / psycopg2")
-    Rel(service, neo, "Расписания, группы набора и число студентов", "Cypher / Bolt")
-    Rel(service, mongo, "university_hierarchy: названия вузов", "MongoDB / PyMongo")
+%%{init: {"theme":"neutral","flowchart":{"curve":"stepAfter","nodeSpacing":48,"rankSpacing":85},"themeVariables":{"fontFamily":"Arial, sans-serif","fontSize":"16px"}}}%%
+%% ЛР 2 — C4 C2: Вместимость аудиторий
+flowchart TB
+    analyst["Аналитик<br/>«Человек»<br/>Клиент HTTP API"]
+    class analyst actor
+    subgraph system["Аналитическая система — срез ЛР 2"]
+    gateway["api-gateway<br/>«Контейнер»<br/>Python / FastAPI / PyJWT / httpx<br/>Локальный login, JWT HS256,<br/>проксирование; :8000"]
+    class gateway component
+    service["lab2-service<br/>«Контейнер»<br/>Python / FastAPI / Pydantic<br/>Вместимость аудиторий; :8002"]
+    class service component
+    pg["PostgreSQL<br/>«Хранилище»<br/>PostgreSQL<br/>Курсы, лекции, специальности,<br/>кафедры, институты"]
+    class pg store
+    neo["Neo4j<br/>«Хранилище»<br/>Neo4j<br/>Расписания, группы набора и число<br/>студентов"]
+    class neo store
+    mongo["MongoDB<br/>«Хранилище»<br/>MongoDB<br/>university_hierarchy: названия<br/>вузов"]
+    class mongo store
+    end
+    analyst -->|"Login и запрос отчёта с Bearer<br/>JWT; ответ JSON; HTTP :8000"| gateway
+    gateway -->|"GET с query и Authorization; ответ<br/>JSON; HTTP / httpx; 30 с"| service
+    analyst -->|"Прямой GET без JWT — обход шлюза;<br/>HTTP :8002"| service
+    service -->|"Курсы, лекции, специальности,<br/>кафедры, институты; SQL / psycopg2"| pg
+    service -->|"Расписания, группы набора и число<br/>студентов; Cypher / Bolt"| neo
+    service -->|"university_hierarchy: названия<br/>вузов; MongoDB / PyMongo"| mongo
+    classDef component fill:#ffffff,stroke:#2d3142,color:#2d3142
+    classDef store fill:#ececec,stroke:#4f5d75,color:#2d3142
+    classDef actor fill:#e4ebf4,stroke:#2e5aa8,color:#2d3142

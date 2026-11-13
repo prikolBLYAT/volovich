@@ -1,0 +1,710 @@
+<?xml version='1.0' encoding='utf-8'?>
+<mxfile host="app.diagrams.net" agent="Native editable conversion" version="26.0.0" compressed="false" type="device">
+  <diagram id="lab1-c4-context" name="C4 Context">
+    <mxGraphModel dx="1600" dy="1000" grid="1" gridSize="20" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1920" pageHeight="960" math="0" shadow="0" background="#f5f5f5">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="lab1-c4-context-title" value="ЛР 1 · C4 Context" style="text;html=1;fontFamily=Arial;fontSize=28;fontStyle=1;fontColor=#2d3142;align=left;verticalAlign=middle;strokeColor=none;fillColor=none;" parent="1" vertex="1">
+          <mxGeometry x="60" y="28" width="1800" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-c4-context-project" value="Граница проекта&lt;br&gt;«Граница системы»" style="rounded=0;html=1;whiteSpace=wrap;container=1;collapsible=0;recursiveResize=0;fillColor=none;strokeColor=#596174;dashed=1;dashPattern=6 4;strokeWidth=1.4;align=left;verticalAlign=top;spacing=16;fontFamily=Arial;fontSize=16;fontColor=#596174;" parent="1" vertex="1" connectable="0">
+          <mxGeometry x="1060" y="160" width="720" height="640" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-c4-context-e1" value="&lt;div style=&quot;line-height:1.35&quot;&gt;Получает JWT; запрашивает отчёт; получает&lt;br&gt;JSON или ошибку; HTTP :8000&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#2e5aa8;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=327.40000000000003;spacing=4;jumpStyle=arc;jumpSize=10;exitX=1;exitY=0.3333333333333333;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0;entryY=0.35;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-c4-context-analyst" target="lab1-c4-context-system">
+          <mxGeometry x="0.11428571428571432" y="0" relative="1" as="geometry">
+            <mxPoint x="0" y="-38.0" as="offset" />
+            <Array as="points">
+              <mxPoint x="540" y="440" />
+              <mxPoint x="540" y="420" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-c4-context-e2" value="&lt;div style=&quot;line-height:1.35&quot;&gt;Может вызвать ЛР 1 напрямую без проверки&lt;br&gt;JWT; HTTP :8001; опубликованный порт&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#2e5aa8;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=320.0;spacing=4;jumpStyle=arc;jumpSize=10;exitX=1;exitY=0.6666666666666666;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0;entryY=0.65;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-c4-context-analyst" target="lab1-c4-context-system">
+          <mxGeometry x="0.11428571428571432" y="0" relative="1" as="geometry">
+            <mxPoint x="0" y="-38.0" as="offset" />
+            <Array as="points">
+              <mxPoint x="540" y="520" />
+              <mxPoint x="540" y="540" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-c4-context-analyst" value="&lt;div style=&quot;font-size:18px;font-weight:bold&quot;&gt;Аналитик&lt;/div&gt;&lt;div style=&quot;margin-top:8px;line-height:1.4&quot;&gt;«Человек»&lt;br&gt;Пользователь HTTP API; отдельный&lt;br&gt;UI в коде отсутствует&lt;/div&gt;" style="html=1;whiteSpace=wrap;fontFamily=Arial;fontSize=16;fontColor=#2d3142;spacing=20;verticalAlign=middle;align=center;strokeWidth=1.5;rounded=0;fillColor=#e9ebef;strokeColor=#2d3142;" parent="1" vertex="1" sourceNodeId="analyst">
+          <mxGeometry x="120" y="360" width="360" height="240" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-c4-context-system" value="&lt;div style=&quot;font-size:18px;font-weight:bold&quot;&gt;Аналитическая система лабораторных&lt;/div&gt;&lt;div style=&quot;margin-top:8px;line-height:1.4&quot;&gt;работ&lt;br&gt;«Программная система»&lt;br&gt;API Gateway, сервисы ЛР 1–3 и&lt;br&gt;используемые хранилища; показан&lt;br&gt;сценарий ЛР 1&lt;/div&gt;" style="html=1;whiteSpace=wrap;fontFamily=Arial;fontSize=16;fontColor=#2d3142;spacing=20;verticalAlign=middle;align=center;strokeWidth=1.5;rounded=0;fillColor=#f9ece7;strokeColor=#bf4520;" parent="lab1-c4-context-project" vertex="1" sourceNodeId="system">
+          <mxGeometry x="100" y="120" width="520" height="400" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-c4-context-legend" value="C4 C1–C3, без Code · логическая граница ≠ сетевая защита" style="text;html=1;fontFamily=Arial;fontSize=14;fontColor=#596174;align=left;strokeColor=none;fillColor=none;" parent="1" vertex="1">
+          <mxGeometry x="60" y="896" width="1800" height="36" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="lab1-c4-container" name="C4 Container">
+    <mxGraphModel dx="1600" dy="1000" grid="1" gridSize="20" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="3400" pageHeight="1840" math="0" shadow="0" background="#f5f5f5">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="lab1-c4-container-title" value="ЛР 1 · C4 Container" style="text;html=1;fontFamily=Arial;fontSize=28;fontStyle=1;fontColor=#2d3142;align=left;verticalAlign=middle;strokeColor=none;fillColor=none;" parent="1" vertex="1">
+          <mxGeometry x="60" y="28" width="3280" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-c4-container-system" value="Аналитическая система — срез ЛР 1&lt;br&gt;«Граница системы»" style="rounded=0;html=1;whiteSpace=wrap;container=1;collapsible=0;recursiveResize=0;fillColor=none;strokeColor=#596174;dashed=1;dashPattern=6 4;strokeWidth=1.4;align=left;verticalAlign=top;spacing=16;fontFamily=Arial;fontSize=16;fontColor=#596174;" parent="1" vertex="1" connectable="0">
+          <mxGeometry x="840" y="100" width="2480" height="1640" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-c4-container-e1" value="&lt;div style=&quot;line-height:1.35&quot;&gt;Login и запрос отчёта с Bearer JWT; ответ&lt;br&gt;JSON; HTTP :8000&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#2e5aa8;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=327.40000000000003;spacing=4;jumpStyle=arc;jumpSize=10;exitX=1;exitY=0.5;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-c4-container-analyst" target="lab1-c4-container-gateway">
+          <mxGeometry x="0.0" y="0" relative="1" as="geometry">
+            <mxPoint x="0" y="-38.0" as="offset" />
+            <Array as="points" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-c4-container-e2" value="&lt;div style=&quot;line-height:1.35&quot;&gt;GET с query и Authorization; ответ JSON;&lt;br&gt;HTTP / httpx; 30 с&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#2e5aa8;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=320.0;spacing=4;jumpStyle=arc;jumpSize=10;exitX=1;exitY=0.5;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-c4-container-gateway" target="lab1-c4-container-service">
+          <mxGeometry x="0.0" y="0" relative="1" as="geometry">
+            <mxPoint x="0" y="-38.0" as="offset" />
+            <Array as="points" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-c4-container-e3" value="&lt;div style=&quot;line-height:1.35&quot;&gt;Прямой GET без JWT — обход шлюза; HTTP&lt;br&gt;:8001&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#2e5aa8;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=305.2;spacing=4;jumpStyle=arc;jumpSize=10;exitX=0.5;exitY=0;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-c4-container-analyst" target="lab1-c4-container-service">
+          <mxGeometry x="0.020408163265306145" y="0" relative="1" as="geometry">
+            <mxPoint x="0" y="-38.0" as="offset" />
+            <Array as="points">
+              <mxPoint x="280" y="700" />
+              <mxPoint x="2080" y="700" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-c4-container-e4" value="&lt;div style=&quot;line-height:1.35&quot;&gt;Группы, специальности, кафедры, посещения;&lt;br&gt;fallback профилей; SQL / psycopg2&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#2e5aa8;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=334.8;spacing=4;jumpStyle=arc;jumpSize=10;exitX=1;exitY=0.1875;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-c4-container-service" target="lab1-c4-container-pg">
+          <mxGeometry x="0.5283018867924529" y="0" relative="1" as="geometry">
+            <mxPoint x="0" y="-38.0" as="offset" />
+            <Array as="points">
+              <mxPoint x="2340" y="820" />
+              <mxPoint x="2340" y="320" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-c4-container-e5" value="&lt;div style=&quot;line-height:1.35&quot;&gt;Лекции, расписания, группы и студенты;&lt;br&gt;Cypher / Bolt&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#2e5aa8;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=305.2;spacing=4;jumpStyle=arc;jumpSize=10;exitX=1;exitY=0.3125;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-c4-container-service" target="lab1-c4-container-neo">
+          <mxGeometry x="-0.3589743589743589" y="0" relative="1" as="geometry">
+            <mxPoint x="0" y="-38.0" as="offset" />
+            <Array as="points">
+              <mxPoint x="2780" y="860" />
+              <mxPoint x="2780" y="640" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-c4-container-e6" value="&lt;div style=&quot;line-height:1.35&quot;&gt;university_hierarchy: институты и вузы;&lt;br&gt;MongoDB / PyMongo&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#2e5aa8;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=312.6;spacing=4;jumpStyle=arc;jumpSize=10;exitX=1;exitY=0.5;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-c4-container-service" target="lab1-c4-container-mongo">
+          <mxGeometry x="0.16666666666666674" y="0" relative="1" as="geometry">
+            <mxPoint x="0" y="-38.0" as="offset" />
+            <Array as="points">
+              <mxPoint x="2340" y="920" />
+              <mxPoint x="2340" y="960" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-c4-container-e7" value="&lt;div style=&quot;line-height:1.35&quot;&gt;JSON-профили студентов; ключ UUID; TTL&lt;br&gt;86400 с; MGET / SETEX&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#2e5aa8;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=305.2;spacing=4;jumpStyle=arc;jumpSize=10;exitX=1;exitY=0.6875;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-c4-container-service" target="lab1-c4-container-redis">
+          <mxGeometry x="0.4186046511627908" y="0" relative="1" as="geometry">
+            <mxPoint x="0" y="-38.0" as="offset" />
+            <Array as="points">
+              <mxPoint x="2340" y="980" />
+              <mxPoint x="2340" y="1280" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-c4-container-e8" value="&lt;div style=&quot;line-height:1.35&quot;&gt;course_materials: полнотекстовые материалы;&lt;br&gt;HTTP / multi_match&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#2e5aa8;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=342.2;spacing=4;jumpStyle=arc;jumpSize=10;exitX=1;exitY=0.8125;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-c4-container-service" target="lab1-c4-container-es">
+          <mxGeometry x="-0.5614035087719298" y="0" relative="1" as="geometry">
+            <mxPoint x="0" y="38.0" as="offset" />
+            <Array as="points">
+              <mxPoint x="2780" y="1020" />
+              <mxPoint x="2780" y="1600" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-c4-container-analyst" value="&lt;div style=&quot;font-size:18px;font-weight:bold&quot;&gt;Аналитик&lt;/div&gt;&lt;div style=&quot;margin-top:8px;line-height:1.4&quot;&gt;«Человек»&lt;br&gt;Клиент HTTP API&lt;/div&gt;" style="html=1;whiteSpace=wrap;fontFamily=Arial;fontSize=16;fontColor=#2d3142;spacing=20;verticalAlign=middle;align=center;strokeWidth=1.5;rounded=0;fillColor=#e9ebef;strokeColor=#2d3142;" parent="1" vertex="1" sourceNodeId="analyst">
+          <mxGeometry x="120" y="800" width="320" height="240" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-c4-container-gateway" value="&lt;div style=&quot;font-size:18px;font-weight:bold&quot;&gt;api-gateway&lt;/div&gt;&lt;div style=&quot;margin-top:8px;line-height:1.4&quot;&gt;«Контейнер»&lt;br&gt;Python / FastAPI / PyJWT / httpx&lt;br&gt;Локальный login, JWT HS256,&lt;br&gt;проксирование; :8000&lt;/div&gt;" style="html=1;whiteSpace=wrap;fontFamily=Arial;fontSize=16;fontColor=#2d3142;spacing=20;verticalAlign=middle;align=center;strokeWidth=1.5;rounded=0;fillColor=#f9ece7;strokeColor=#bf4520;" parent="lab1-c4-container-system" vertex="1" sourceNodeId="gateway">
+          <mxGeometry x="160" y="680" width="400" height="280" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-c4-container-service" value="&lt;div style=&quot;font-size:18px;font-weight:bold&quot;&gt;lab1-service&lt;/div&gt;&lt;div style=&quot;margin-top:8px;line-height:1.4&quot;&gt;«Контейнер»&lt;br&gt;Python / FastAPI / Pydantic&lt;br&gt;Посещаемость лекций; :8001&lt;/div&gt;" style="html=1;whiteSpace=wrap;fontFamily=Arial;fontSize=16;fontColor=#2d3142;spacing=20;verticalAlign=middle;align=center;strokeWidth=1.5;rounded=0;fillColor=#ffffff;strokeColor=#2d3142;" parent="lab1-c4-container-system" vertex="1" sourceNodeId="service">
+          <mxGeometry x="1040" y="660" width="400" height="320" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-c4-container-pg" value="&lt;div style=&quot;font-size:18px;font-weight:bold&quot;&gt;PostgreSQL&lt;/div&gt;&lt;div style=&quot;margin-top:8px;line-height:1.4&quot;&gt;«Хранилище»&lt;br&gt;PostgreSQL&lt;br&gt;Группы, специальности, кафедры,&lt;br&gt;посещения; fallback профилей&lt;/div&gt;" style="html=1;whiteSpace=wrap;fontFamily=Arial;fontSize=16;fontColor=#2d3142;spacing=20;verticalAlign=middle;align=center;strokeWidth=1.5;rounded=0;fillColor=#ffffff;strokeColor=#2d3142;" parent="lab1-c4-container-system" vertex="1" sourceNodeId="pg">
+          <mxGeometry x="2000" y="100" width="400" height="240" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-c4-container-neo" value="&lt;div style=&quot;font-size:18px;font-weight:bold&quot;&gt;Neo4j&lt;/div&gt;&lt;div style=&quot;margin-top:8px;line-height:1.4&quot;&gt;«Хранилище»&lt;br&gt;Neo4j&lt;br&gt;Лекции, расписания, группы и&lt;br&gt;студенты&lt;/div&gt;" style="html=1;whiteSpace=wrap;fontFamily=Arial;fontSize=16;fontColor=#2d3142;spacing=20;verticalAlign=middle;align=center;strokeWidth=1.5;rounded=0;fillColor=#ffffff;strokeColor=#2d3142;" parent="lab1-c4-container-system" vertex="1" sourceNodeId="neo">
+          <mxGeometry x="2000" y="420" width="400" height="240" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-c4-container-mongo" value="&lt;div style=&quot;font-size:18px;font-weight:bold&quot;&gt;MongoDB&lt;/div&gt;&lt;div style=&quot;margin-top:8px;line-height:1.4&quot;&gt;«Хранилище»&lt;br&gt;MongoDB&lt;br&gt;university_hierarchy: институты и&lt;br&gt;вузы&lt;/div&gt;" style="html=1;whiteSpace=wrap;fontFamily=Arial;fontSize=16;fontColor=#2d3142;spacing=20;verticalAlign=middle;align=center;strokeWidth=1.5;rounded=0;fillColor=#ffffff;strokeColor=#2d3142;" parent="lab1-c4-container-system" vertex="1" sourceNodeId="mongo">
+          <mxGeometry x="2000" y="740" width="400" height="240" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-c4-container-redis" value="&lt;div style=&quot;font-size:18px;font-weight:bold&quot;&gt;Redis&lt;/div&gt;&lt;div style=&quot;margin-top:8px;line-height:1.4&quot;&gt;«Хранилище»&lt;br&gt;Redis&lt;br&gt;JSON-профили студентов; ключ UUID;&lt;br&gt;TTL 86400 с&lt;/div&gt;" style="html=1;whiteSpace=wrap;fontFamily=Arial;fontSize=16;fontColor=#2d3142;spacing=20;verticalAlign=middle;align=center;strokeWidth=1.5;rounded=0;fillColor=#ffffff;strokeColor=#2d3142;" parent="lab1-c4-container-system" vertex="1" sourceNodeId="redis">
+          <mxGeometry x="2000" y="1060" width="400" height="240" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-c4-container-es" value="&lt;div style=&quot;font-size:18px;font-weight:bold&quot;&gt;Elasticsearch&lt;/div&gt;&lt;div style=&quot;margin-top:8px;line-height:1.4&quot;&gt;«Хранилище»&lt;br&gt;Elasticsearch&lt;br&gt;course_materials: полнотекстовые&lt;br&gt;материалы&lt;/div&gt;" style="html=1;whiteSpace=wrap;fontFamily=Arial;fontSize=16;fontColor=#2d3142;spacing=20;verticalAlign=middle;align=center;strokeWidth=1.5;rounded=0;fillColor=#ffffff;strokeColor=#2d3142;" parent="lab1-c4-container-system" vertex="1" sourceNodeId="es">
+          <mxGeometry x="2000" y="1380" width="400" height="240" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-c4-container-legend" value="C4 C1–C3, без Code · логическая граница ≠ сетевая защита" style="text;html=1;fontFamily=Arial;fontSize=14;fontColor=#596174;align=left;strokeColor=none;fillColor=none;" parent="1" vertex="1">
+          <mxGeometry x="60" y="1776" width="3280" height="36" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="lab1-c4-component" name="C4 Component">
+    <mxGraphModel dx="1600" dy="1000" grid="1" gridSize="20" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="3400" pageHeight="2000" math="0" shadow="0" background="#f5f5f5">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="lab1-c4-component-title" value="ЛР 1 · C4 Component" style="text;html=1;fontFamily=Arial;fontSize=28;fontStyle=1;fontColor=#2d3142;align=left;verticalAlign=middle;strokeColor=none;fillColor=none;" parent="1" vertex="1">
+          <mxGeometry x="60" y="28" width="3280" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-c4-component-gw" value="api-gateway — gateway.py&lt;br&gt;«Граница контейнера»" style="rounded=0;html=1;whiteSpace=wrap;container=1;collapsible=0;recursiveResize=0;fillColor=none;strokeColor=#596174;dashed=1;dashPattern=6 4;strokeWidth=1.4;align=left;verticalAlign=top;spacing=16;fontFamily=Arial;fontSize=16;fontColor=#596174;" parent="1" vertex="1" connectable="0">
+          <mxGeometry x="60" y="160" width="560" height="1300" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-c4-component-svc" value="lab1-service — lab1.py&lt;br&gt;«Граница контейнера»" style="rounded=0;html=1;whiteSpace=wrap;container=1;collapsible=0;recursiveResize=0;fillColor=none;strokeColor=#596174;dashed=1;dashPattern=6 4;strokeWidth=1.4;align=left;verticalAlign=top;spacing=16;fontFamily=Arial;fontSize=16;fontColor=#596174;" parent="1" vertex="1" connectable="0">
+          <mxGeometry x="1200" y="160" width="2120" height="1740" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-c4-component-e1" value="&lt;div style=&quot;line-height:1.35&quot;&gt;Depends: проверяет Bearer JWT до вызова&lt;br&gt;сервиса&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#2e5aa8;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=312.6;spacing=4;jumpStyle=arc;jumpSize=10;exitX=0.47619047619047616;exitY=0;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0.47619047619047616;entryY=1;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-c4-component-proxy" target="lab1-c4-component-auth">
+          <mxGeometry x="0.0" y="0" relative="1" as="geometry">
+            <mxPoint x="168.3" y="0" as="offset" />
+            <Array as="points" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-c4-component-e2" value="&lt;div style=&quot;line-height:1.35&quot;&gt;HTTP GET; передаёт query и Authorization;&lt;br&gt;сервис JWT не проверяет&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#2e5aa8;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=327.40000000000003;spacing=4;jumpStyle=arc;jumpSize=10;exitX=1;exitY=0.5;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-c4-component-proxy" target="lab1-c4-component-handler">
+          <mxGeometry x="0.10000000000000009" y="0" relative="1" as="geometry">
+            <mxPoint x="0" y="-38.0" as="offset" />
+            <Array as="points">
+              <mxPoint x="600" y="1180" />
+              <mxPoint x="600" y="1160" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-c4-component-e3" value="&lt;div style=&quot;line-height:1.35&quot;&gt;Выполняет встроенные логические участки, не&lt;br&gt;сетевой вызов&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#2e5aa8;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=342.2;spacing=4;jumpStyle=arc;jumpSize=10;exitX=0.5;exitY=0;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-c4-component-handler" target="lab1-c4-component-logic">
+          <mxGeometry x="0.32258064516129026" y="0" relative="1" as="geometry">
+            <mxPoint x="0" y="-38.0" as="offset" />
+            <Array as="points">
+              <mxPoint x="1540" y="420" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-c4-component-e4" value="&lt;div style=&quot;line-height:1.35&quot;&gt;Открывает подключения&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#2e5aa8;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=200;spacing=4;jumpStyle=arc;jumpSize=10;exitX=0.3181818181818182;exitY=1;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-c4-component-handler" target="lab1-c4-component-helper">
+          <mxGeometry x="0.06666666666666665" y="0" relative="1" as="geometry">
+            <mxPoint x="0" y="-28.0" as="offset" />
+            <Array as="points">
+              <mxPoint x="1460" y="1420" />
+              <mxPoint x="2180" y="1420" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-c4-component-e5" value="&lt;div style=&quot;line-height:1.35&quot;&gt;Создаёт типизированный JSON-ответ&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#2e5aa8;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=268.20000000000005;spacing=4;jumpStyle=arc;jumpSize=10;exitX=0.6818181818181818;exitY=1;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-c4-component-handler" target="lab1-c4-component-dto">
+          <mxGeometry x="-0.06329113924050633" y="0" relative="1" as="geometry">
+            <mxPoint x="0" y="-28.0" as="offset" />
+            <Array as="points">
+              <mxPoint x="1620" y="1340" />
+              <mxPoint x="3020" y="1340" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-c4-component-auth" value="&lt;div style=&quot;font-size:18px;font-weight:bold&quot;&gt;login / verify_jwt&lt;/div&gt;&lt;div style=&quot;margin-top:8px;line-height:1.4&quot;&gt;«Компонент»&lt;br&gt;Функции + Depends / PyJWT&lt;br&gt;Проверка локальных credentials;&lt;br&gt;выпуск JWT на 12 ч; подпись и exp&lt;/div&gt;" style="html=1;whiteSpace=wrap;fontFamily=Arial;fontSize=16;fontColor=#2d3142;spacing=20;verticalAlign=middle;align=center;strokeWidth=1.5;rounded=0;fillColor=#ffffff;strokeColor=#2d3142;" parent="lab1-c4-component-gw" vertex="1" sourceNodeId="auth">
+          <mxGeometry x="60" y="100" width="420" height="280" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-c4-component-proxy" value="&lt;div style=&quot;font-size:18px;font-weight:bold&quot;&gt;proxy_lab1_report&lt;/div&gt;&lt;div style=&quot;margin-top:8px;line-height:1.4&quot;&gt;«Компонент»&lt;br&gt;Async handler / httpx&lt;br&gt;Query и Authorization; timeout 30&lt;br&gt;с; JSON и ошибки upstream&lt;/div&gt;" style="html=1;whiteSpace=wrap;fontFamily=Arial;fontSize=16;fontColor=#2d3142;spacing=20;verticalAlign=middle;align=center;strokeWidth=1.5;rounded=0;fillColor=#ffffff;strokeColor=#2d3142;" parent="lab1-c4-component-gw" vertex="1" sourceNodeId="proxy">
+          <mxGeometry x="60" y="880" width="420" height="280" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-c4-component-handler" value="&lt;div style=&quot;font-size:18px;font-weight:bold&quot;&gt;get_attendance_report&lt;/div&gt;&lt;div style=&quot;margin-top:8px;line-height:1.4&quot;&gt;«Компонент»&lt;br&gt;FastAPI handler&lt;br&gt;Валидация query; оркестрация&lt;br&gt;чтений и сборки отчёта&lt;/div&gt;" style="html=1;whiteSpace=wrap;fontFamily=Arial;fontSize=16;fontColor=#2d3142;spacing=20;verticalAlign=middle;align=center;strokeWidth=1.5;rounded=0;fillColor=#f9ece7;strokeColor=#bf4520;" parent="lab1-c4-component-svc" vertex="1" sourceNodeId="handler">
+          <mxGeometry x="120" y="860" width="440" height="280" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-c4-component-logic" value="&lt;div style=&quot;font-size:18px;font-weight:bold&quot;&gt;Расчёт и обогащение&lt;/div&gt;&lt;div style=&quot;margin-top:8px;line-height:1.4&quot;&gt;«Компонент»&lt;br&gt;Логические участки handler, НЕ&lt;br&gt;отдельные классы&lt;br&gt;Поиск lecture_id; расписания;&lt;br&gt;проценты и ranking; группа и&lt;br&gt;иерархия&lt;/div&gt;" style="html=1;whiteSpace=wrap;fontFamily=Arial;fontSize=16;fontColor=#2d3142;spacing=20;verticalAlign=middle;align=center;strokeWidth=1.5;rounded=0;fillColor=#ffffff;strokeColor=#2d3142;" parent="lab1-c4-component-svc" vertex="1" sourceNodeId="logic">
+          <mxGeometry x="1600" y="80" width="440" height="360" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-c4-component-helper" value="&lt;div style=&quot;font-size:18px;font-weight:bold&quot;&gt;get_pg_conn / get_es_client&lt;/div&gt;&lt;div style=&quot;margin-top:8px;line-height:1.4&quot;&gt;«Компонент»&lt;br&gt;Функции подключения&lt;br&gt;Соединения с ограничением времени;&lt;br&gt;HTTP 503 при недоступности&lt;/div&gt;" style="html=1;whiteSpace=wrap;fontFamily=Arial;fontSize=16;fontColor=#2d3142;spacing=20;verticalAlign=middle;align=center;strokeWidth=1.5;rounded=0;fillColor=#ffffff;strokeColor=#2d3142;" parent="lab1-c4-component-svc" vertex="1" sourceNodeId="helper">
+          <mxGeometry x="760" y="1320" width="440" height="260" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-c4-component-dto" value="&lt;div style=&quot;font-size:18px;font-weight:bold&quot;&gt;Схемы ответа&lt;/div&gt;&lt;div style=&quot;margin-top:8px;line-height:1.4&quot;&gt;«Компонент»&lt;br&gt;Pydantic BaseModel&lt;br&gt;FullStudentInfoDTO,&lt;br&gt;ReportResponseDTO&lt;/div&gt;" style="html=1;whiteSpace=wrap;fontFamily=Arial;fontSize=16;fontColor=#2d3142;spacing=20;verticalAlign=middle;align=center;strokeWidth=1.5;rounded=0;fillColor=#ffffff;strokeColor=#2d3142;" parent="lab1-c4-component-svc" vertex="1" sourceNodeId="dto">
+          <mxGeometry x="1600" y="1320" width="440" height="320" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-c4-component-legend" value="C4 C1–C3, без Code · логическая граница ≠ сетевая защита" style="text;html=1;fontFamily=Arial;fontSize=14;fontColor=#596174;align=left;strokeColor=none;fillColor=none;" parent="1" vertex="1">
+          <mxGeometry x="60" y="1936" width="3280" height="36" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="lab1-dfd" name="DFD">
+    <mxGraphModel dx="1600" dy="1000" grid="1" gridSize="20" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="4160" pageHeight="2400" math="0" shadow="0" background="#f5f5f5">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="lab1-dfd-title" value="ЛР 1 · DFD" style="text;html=1;fontFamily=Arial;fontSize=28;fontStyle=1;fontColor=#2d3142;align=left;verticalAlign=middle;strokeColor=none;fillColor=none;" parent="1" vertex="1">
+          <mxGeometry x="60" y="28" width="4040" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-dfd-e1" value="&lt;div style=&quot;line-height:1.35&quot;&gt;Login: username, password&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#596174;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=209.0;spacing=4;jumpStyle=arc;jumpSize=10;exitX=1;exitY=0.2222222222222222;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0.08426029035845095;entryY=0.2222222222222222;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-dfd-acc" target="lab1-dfd-auth">
+          <mxGeometry x="0.0" y="0" relative="1" as="geometry">
+            <mxPoint x="0" y="-28.0" as="offset" />
+            <Array as="points" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-dfd-e2" value="&lt;div style=&quot;line-height:1.35&quot;&gt;JWT HS256 на 12 ч или 401&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#596174;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=209.0;spacing=4;jumpStyle=arc;jumpSize=10;exitX=0.012501978478215436;exitY=0.3888888888888889;exitDx=0;exitDy=0;exitPerimeter=0;entryX=1;entryY=0.3888888888888889;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-dfd-auth" target="lab1-dfd-acc">
+          <mxGeometry x="0.0" y="0" relative="1" as="geometry">
+            <mxPoint x="0" y="-28.0" as="offset" />
+            <Array as="points" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-dfd-e3" value="&lt;div style=&quot;line-height:1.35&quot;&gt;Query отчёта и Bearer JWT&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#596174;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=209.0;spacing=4;jumpStyle=arc;jumpSize=10;exitX=1;exitY=0.6111111111111112;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0.012501978478215436;entryY=0.6111111111111112;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-dfd-acc" target="lab1-dfd-auth">
+          <mxGeometry x="0.0" y="0" relative="1" as="geometry">
+            <mxPoint x="0" y="-28.0" as="offset" />
+            <Array as="points" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-dfd-e4" value="&lt;div style=&quot;line-height:1.35&quot;&gt;Проверенные JWT; query и Authorization&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#596174;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=305.2;spacing=4;jumpStyle=arc;jumpSize=10;exitX=0.9714045207910317;exitY=0.3333333333333333;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0.025041120200916756;entryY=0.34375;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-dfd-auth" target="lab1-dfd-report">
+          <mxGeometry x="0.16552750049638254" y="0" relative="1" as="geometry">
+            <mxPoint x="0" y="-28.0" as="offset" />
+            <Array as="points">
+              <mxPoint x="1420" y="1040" />
+              <mxPoint x="1420" y="1000" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-dfd-e5" value="&lt;div style=&quot;line-height:1.35&quot;&gt;JSON отчёта или ошибка сервиса&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#596174;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=246.0;spacing=4;jumpStyle=arc;jumpSize=10;exitX=0.025041120200916756;exitY=0.65625;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0.9714045207910317;entryY=0.6666666666666666;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-dfd-report" target="lab1-dfd-auth">
+          <mxGeometry x="0.17412981466732158" y="0" relative="1" as="geometry">
+            <mxPoint x="0" y="-28.0" as="offset" />
+            <Array as="points">
+              <mxPoint x="1900" y="1200" />
+              <mxPoint x="1900" y="1160" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-dfd-e6" value="&lt;div style=&quot;line-height:1.35&quot;&gt;JSON отчёта или HTTP-ошибка&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#596174;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=223.8;spacing=4;jumpStyle=arc;jumpSize=10;exitX=0.08426029035845095;exitY=0.7777777777777778;exitDx=0;exitDy=0;exitPerimeter=0;entryX=1;entryY=0.7777777777777778;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-dfd-auth" target="lab1-dfd-acc">
+          <mxGeometry x="0.0" y="0" relative="1" as="geometry">
+            <mxPoint x="0" y="-28.0" as="offset" />
+            <Array as="points" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-dfd-e7" value="&lt;div style=&quot;line-height:1.35&quot;&gt;Query напрямую :8001, без JWT&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#596174;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=238.60000000000002;spacing=4;jumpStyle=arc;jumpSize=10;exitX=0.5;exitY=0;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0.5;entryY=0.0;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-dfd-acc" target="lab1-dfd-report">
+          <mxGeometry x="0.06194690265486735" y="0" relative="1" as="geometry">
+            <mxPoint x="0" y="-28.0" as="offset" />
+            <Array as="points">
+              <mxPoint x="280" y="720" />
+              <mxPoint x="2280" y="720" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-dfd-e8" value="&lt;div style=&quot;line-height:1.35&quot;&gt;JSON или ошибка прямого вызова&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#596174;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=246.0;spacing=4;jumpStyle=arc;jumpSize=10;exitX=0.5;exitY=1.0;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-dfd-report" target="lab1-dfd-acc">
+          <mxGeometry x="-0.06194690265486724" y="0" relative="1" as="geometry">
+            <mxPoint x="0" y="-28.0" as="offset" />
+            <Array as="points">
+              <mxPoint x="2280" y="1480" />
+              <mxPoint x="280" y="1480" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-dfd-e9" value="&lt;div style=&quot;line-height:1.35&quot;&gt;UUID студентов и занятий; период; UUID&lt;br&gt;групп; отсутствующие профили&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#596174;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=305.2;spacing=4;jumpStyle=arc;jumpSize=10;exitX=0.7914805954090255;exitY=0.09375;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0;entryY=0.3333333333333333;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-dfd-report" target="lab1-dfd-pg">
+          <mxGeometry x="0.45139999220287663" y="0" relative="1" as="geometry">
+            <mxPoint x="0" y="-38.0" as="offset" />
+            <Array as="points">
+              <mxPoint x="2660" y="840" />
+              <mxPoint x="2660" y="260" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-dfd-e10" value="&lt;div style=&quot;line-height:1.35&quot;&gt;Посещения mark=1; группы и специальности;&lt;br&gt;fallback профилей&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#596174;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=327.40000000000003;spacing=4;jumpStyle=arc;jumpSize=10;exitX=0;exitY=0.6666666666666666;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0.8630921887069454;entryY=0.15625;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-dfd-pg" target="lab1-dfd-report">
+          <mxGeometry x="0.36863618741709514" y="0" relative="1" as="geometry">
+            <mxPoint x="0" y="-38.0" as="offset" />
+            <Array as="points">
+              <mxPoint x="3540" y="340" />
+              <mxPoint x="3540" y="880" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-dfd-e11" value="&lt;div style=&quot;line-height:1.35&quot;&gt;lecture_id и период; только Lecture&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#596174;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=283.0;spacing=4;jumpStyle=arc;jumpSize=10;exitX=0.9330127018922193;exitY=0.25;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0;entryY=0.3333333333333333;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-dfd-report" target="lab1-dfd-neo">
+          <mxGeometry x="-0.2721351931354804" y="0" relative="1" as="geometry">
+            <mxPoint x="0" y="-28.0" as="offset" />
+            <Array as="points">
+              <mxPoint x="3520" y="940" />
+              <mxPoint x="3520" y="660" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-dfd-e12" value="&lt;div style=&quot;line-height:1.35&quot;&gt;UUID студентов, групп, занятий и лекций&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#596174;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=312.6;spacing=4;jumpStyle=arc;jumpSize=10;exitX=0;exitY=0.6666666666666666;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0.9749588797990832;entryY=0.34375;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-dfd-neo" target="lab1-dfd-report">
+          <mxGeometry x="-0.2790117256987571" y="0" relative="1" as="geometry">
+            <mxPoint x="0" y="-28.0" as="offset" />
+            <Array as="points">
+              <mxPoint x="2680" y="740" />
+              <mxPoint x="2680" y="1000" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-dfd-e13" value="&lt;div style=&quot;line-height:1.35&quot;&gt;UUID кафедр итоговых групп&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#596174;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=216.4;spacing=4;jumpStyle=arc;jumpSize=10;exitX=0.9911323014219284;exitY=0.40625;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0;entryY=0.3333333333333333;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-dfd-report" target="lab1-dfd-mongo">
+          <mxGeometry x="0.08353062611530171" y="0" relative="1" as="geometry">
+            <mxPoint x="0" y="-28.0" as="offset" />
+            <Array as="points">
+              <mxPoint x="2660" y="1040" />
+              <mxPoint x="2660" y="1060" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-dfd-e14" value="&lt;div style=&quot;line-height:1.35&quot;&gt;Названия кафедр, институтов и вузов&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#596174;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=283.0;spacing=4;jumpStyle=arc;jumpSize=10;exitX=0;exitY=0.6666666666666666;exitDx=0;exitDy=0;exitPerimeter=0;entryX=1.0;entryY=0.5;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-dfd-mongo" target="lab1-dfd-report">
+          <mxGeometry x="0.09615384615384626" y="0" relative="1" as="geometry">
+            <mxPoint x="0" y="28.0" as="offset" />
+            <Array as="points">
+              <mxPoint x="3540" y="1140" />
+              <mxPoint x="3540" y="1100" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-dfd-e15" value="&lt;div style=&quot;line-height:1.35&quot;&gt;MGET: UUID итоговых студентов&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#596174;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=238.60000000000002;spacing=4;jumpStyle=arc;jumpSize=10;exitX=0.9911323014219284;exitY=0.59375;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0;entryY=0.25;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-dfd-report" target="lab1-dfd-redis">
+          <mxGeometry x="0.2688667193030774" y="0" relative="1" as="geometry">
+            <mxPoint x="0" y="-28.0" as="offset" />
+            <Array as="points">
+              <mxPoint x="2660" y="1160" />
+              <mxPoint x="2660" y="1440" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-dfd-e16" value="&lt;div style=&quot;line-height:1.35&quot;&gt;JSON-профили или промах&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#596174;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=200;spacing=4;jumpStyle=arc;jumpSize=10;exitX=0;exitY=0.5;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0.9749588797990832;entryY=0.65625;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-dfd-redis" target="lab1-dfd-report">
+          <mxGeometry x="0.27355076414506296" y="0" relative="1" as="geometry">
+            <mxPoint x="0" y="-28.0" as="offset" />
+            <Array as="points">
+              <mxPoint x="3540" y="1500" />
+              <mxPoint x="3540" y="1200" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-dfd-e17" value="&lt;div style=&quot;line-height:1.35&quot;&gt;Термин: title^3 и content_text; size=10000&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#596174;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=334.8;spacing=4;jumpStyle=arc;jumpSize=10;exitX=0.8630921887069454;exitY=0.84375;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0;entryY=0.3333333333333333;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-dfd-report" target="lab1-dfd-es">
+          <mxGeometry x="-0.38092406033099846" y="0" relative="1" as="geometry">
+            <mxPoint x="0" y="-28.0" as="offset" />
+            <Array as="points">
+              <mxPoint x="3520" y="1320" />
+              <mxPoint x="3520" y="1860" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-dfd-e18" value="&lt;div style=&quot;line-height:1.35&quot;&gt;Уникальные lecture_id&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#596174;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=200;spacing=4;jumpStyle=arc;jumpSize=10;exitX=0;exitY=0.6666666666666666;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0.7914805954090255;entryY=0.90625;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-dfd-es" target="lab1-dfd-report">
+          <mxGeometry x="-0.4630723327943047" y="0" relative="1" as="geometry">
+            <mxPoint x="0" y="-28.0" as="offset" />
+            <Array as="points">
+              <mxPoint x="2680" y="1940" />
+              <mxPoint x="2680" y="1360" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-dfd-e19" value="&lt;div style=&quot;line-height:1.35&quot;&gt;SETEX: UUID → JSON профиля из PG; TTL 86400&lt;br&gt;с&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#596174;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=342.2;spacing=4;jumpStyle=arc;jumpSize=10;exitX=0.9330127018922193;exitY=0.75;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0;entryY=0.75;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-dfd-report" target="lab1-dfd-redis">
+          <mxGeometry x="0.41915531928250194" y="0" relative="1" as="geometry">
+            <mxPoint x="0" y="-38.0" as="offset" />
+            <Array as="points">
+              <mxPoint x="2820" y="1260" />
+              <mxPoint x="2820" y="1560" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-dfd-acc" value="&lt;div style=&quot;line-height:1.45&quot;&gt;E1 Аналитик / HTTP-клиент&lt;/div&gt;" style="html=1;whiteSpace=wrap;fontFamily=Arial;fontSize=16;fontColor=#2d3142;spacing=20;verticalAlign=middle;align=center;strokeWidth=1.5;rounded=0;fillColor=#e9ebef;strokeColor=#2d3142;" parent="1" vertex="1" sourceNodeId="acc">
+          <mxGeometry x="100" y="920" width="360" height="360" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-dfd-auth" value="&lt;div style=&quot;line-height:1.45&quot;&gt;1.0&lt;br&gt;Аутентификация&lt;br&gt;и HTTP-прокси&lt;/div&gt;" style="html=1;whiteSpace=wrap;fontFamily=Arial;fontSize=18;fontColor=#2d3142;spacing=20;verticalAlign=middle;align=center;strokeWidth=1.5;ellipse;aspect=fixed;fillColor=#ffffff;strokeColor=#2d3142;" parent="1" vertex="1" sourceNodeId="auth">
+          <mxGeometry x="1000" y="920" width="360" height="360" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-dfd-report" value="&lt;div style=&quot;line-height:1.45&quot;&gt;2.0&lt;br&gt;Посещаемость лекций&lt;/div&gt;" style="html=1;whiteSpace=wrap;fontFamily=Arial;fontSize=18;fontColor=#2d3142;spacing=20;verticalAlign=middle;align=center;strokeWidth=1.5;ellipse;aspect=fixed;fillColor=#ffffff;strokeColor=#bf4520;" parent="1" vertex="1" sourceNodeId="report">
+          <mxGeometry x="1960" y="780" width="640" height="640" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-dfd-pg" value="&lt;div style=&quot;line-height:1.45&quot;&gt;D1 PostgreSQL&lt;/div&gt;" style="html=1;whiteSpace=wrap;fontFamily=Arial;fontSize=16;fontColor=#2d3142;spacing=20;verticalAlign=middle;align=center;strokeWidth=1.5;shape=rectangle;fillColor=none;strokeColor=none;container=1;collapsible=0;recursiveResize=0;" parent="1" vertex="1" sourceNodeId="pg">
+          <mxGeometry x="3600" y="180" width="400" height="240" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-dfd-pg-top" value="" style="shape=line;strokeWidth=1.5;strokeColor=#596174;fillColor=none;" parent="lab1-dfd-pg" vertex="1" connectable="0">
+          <mxGeometry x="0" y="0" width="400" height="0" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-dfd-pg-bottom" value="" style="shape=line;strokeWidth=1.5;strokeColor=#596174;fillColor=none;" parent="lab1-dfd-pg" vertex="1" connectable="0">
+          <mxGeometry x="0" y="240" width="400" height="0" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-dfd-neo" value="&lt;div style=&quot;line-height:1.45&quot;&gt;D2 Neo4j&lt;/div&gt;" style="html=1;whiteSpace=wrap;fontFamily=Arial;fontSize=16;fontColor=#2d3142;spacing=20;verticalAlign=middle;align=center;strokeWidth=1.5;shape=rectangle;fillColor=none;strokeColor=none;container=1;collapsible=0;recursiveResize=0;" parent="1" vertex="1" sourceNodeId="neo">
+          <mxGeometry x="3600" y="580" width="400" height="240" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-dfd-neo-top" value="" style="shape=line;strokeWidth=1.5;strokeColor=#596174;fillColor=none;" parent="lab1-dfd-neo" vertex="1" connectable="0">
+          <mxGeometry x="0" y="0" width="400" height="0" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-dfd-neo-bottom" value="" style="shape=line;strokeWidth=1.5;strokeColor=#596174;fillColor=none;" parent="lab1-dfd-neo" vertex="1" connectable="0">
+          <mxGeometry x="0" y="240" width="400" height="0" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-dfd-mongo" value="&lt;div style=&quot;line-height:1.45&quot;&gt;D3 MongoDB&lt;/div&gt;" style="html=1;whiteSpace=wrap;fontFamily=Arial;fontSize=16;fontColor=#2d3142;spacing=20;verticalAlign=middle;align=center;strokeWidth=1.5;shape=rectangle;fillColor=none;strokeColor=none;container=1;collapsible=0;recursiveResize=0;" parent="1" vertex="1" sourceNodeId="mongo">
+          <mxGeometry x="3600" y="980" width="400" height="240" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-dfd-mongo-top" value="" style="shape=line;strokeWidth=1.5;strokeColor=#596174;fillColor=none;" parent="lab1-dfd-mongo" vertex="1" connectable="0">
+          <mxGeometry x="0" y="0" width="400" height="0" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-dfd-mongo-bottom" value="" style="shape=line;strokeWidth=1.5;strokeColor=#596174;fillColor=none;" parent="lab1-dfd-mongo" vertex="1" connectable="0">
+          <mxGeometry x="0" y="240" width="400" height="0" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-dfd-redis" value="&lt;div style=&quot;line-height:1.45&quot;&gt;D4 Redis&lt;/div&gt;" style="html=1;whiteSpace=wrap;fontFamily=Arial;fontSize=16;fontColor=#2d3142;spacing=20;verticalAlign=middle;align=center;strokeWidth=1.5;shape=rectangle;fillColor=none;strokeColor=none;container=1;collapsible=0;recursiveResize=0;" parent="1" vertex="1" sourceNodeId="redis">
+          <mxGeometry x="3600" y="1380" width="400" height="240" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-dfd-redis-top" value="" style="shape=line;strokeWidth=1.5;strokeColor=#596174;fillColor=none;" parent="lab1-dfd-redis" vertex="1" connectable="0">
+          <mxGeometry x="0" y="0" width="400" height="0" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-dfd-redis-bottom" value="" style="shape=line;strokeWidth=1.5;strokeColor=#596174;fillColor=none;" parent="lab1-dfd-redis" vertex="1" connectable="0">
+          <mxGeometry x="0" y="240" width="400" height="0" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-dfd-es" value="&lt;div style=&quot;line-height:1.45&quot;&gt;D5 Elasticsearch&lt;/div&gt;" style="html=1;whiteSpace=wrap;fontFamily=Arial;fontSize=16;fontColor=#2d3142;spacing=20;verticalAlign=middle;align=center;strokeWidth=1.5;shape=rectangle;fillColor=none;strokeColor=none;container=1;collapsible=0;recursiveResize=0;" parent="1" vertex="1" sourceNodeId="es">
+          <mxGeometry x="3600" y="1780" width="400" height="240" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-dfd-es-top" value="" style="shape=line;strokeWidth=1.5;strokeColor=#596174;fillColor=none;" parent="lab1-dfd-es" vertex="1" connectable="0">
+          <mxGeometry x="0" y="0" width="400" height="0" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-dfd-es-bottom" value="" style="shape=line;strokeWidth=1.5;strokeColor=#596174;fillColor=none;" parent="lab1-dfd-es" vertex="1" connectable="0">
+          <mxGeometry x="0" y="240" width="400" height="0" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-dfd-legend" value="Йордан—Код: круг = процесс · прямоугольник = внешняя сущность · две открытые линии = хранилище · каждая стрелка = отдельный поток данных" style="text;html=1;fontFamily=Arial;fontSize=14;fontColor=#596174;align=left;strokeColor=none;fillColor=none;" parent="1" vertex="1">
+          <mxGeometry x="60" y="2336" width="4040" height="36" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="lab1-dfd-detail" name="DFD detail">
+    <mxGraphModel dx="1600" dy="1000" grid="1" gridSize="20" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="4400" pageHeight="2440" math="0" shadow="0" background="#f5f5f5">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="lab1-dfd-detail-title" value="ЛР 1 · DFD detail" style="text;html=1;fontFamily=Arial;fontSize=28;fontStyle=1;fontColor=#2d3142;align=left;verticalAlign=middle;strokeColor=none;fillColor=none;" parent="1" vertex="1">
+          <mxGeometry x="60" y="28" width="4280" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-dfd-detail-e1" value="&lt;div style=&quot;line-height:1.35&quot;&gt;Термин, период, диапазон %, limit&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#596174;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=268.20000000000005;spacing=4;jumpStyle=arc;jumpSize=10;exitX=1;exitY=0.35714285714285715;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0.028595479208968322;entryY=0.3333333333333333;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-dfd-detail-e" target="lab1-dfd-detail-p1">
+          <mxGeometry x="0.19662641505476697" y="0" relative="1" as="geometry">
+            <mxPoint x="0" y="-28.0" as="offset" />
+            <Array as="points">
+              <mxPoint x="560" y="1020" />
+              <mxPoint x="560" y="960" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-dfd-detail-e2" value="&lt;div style=&quot;line-height:1.35&quot;&gt;multi_match: title^3, content_text&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#596174;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=275.6;spacing=4;jumpStyle=arc;jumpSize=10;exitX=0.3333333333333333;exitY=0.028595479208968322;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0.34615384615384615;entryY=1;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-dfd-detail-p1" target="lab1-dfd-detail-es">
+          <mxGeometry x="-0.3388139884098511" y="0" relative="1" as="geometry">
+            <mxPoint x="149.8" y="0" as="offset" />
+            <Array as="points">
+              <mxPoint x="1160" y="460" />
+              <mxPoint x="1020" y="460" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-dfd-detail-e3" value="&lt;div style=&quot;line-height:1.35&quot;&gt;lecture_id&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#596174;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=200;spacing=4;jumpStyle=arc;jumpSize=10;exitX=0.6538461538461539;exitY=1;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0.6666666666666666;entryY=0.028595479208968322;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-dfd-detail-es" target="lab1-dfd-detail-p1">
+          <mxGeometry x="-0.6826879629582621" y="0" relative="1" as="geometry">
+            <mxPoint x="112.0" y="0" as="offset" />
+            <Array as="points">
+              <mxPoint x="1180" y="600" />
+              <mxPoint x="1140" y="600" />
+              <mxPoint x="1140" y="780" />
+              <mxPoint x="1280" y="780" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-dfd-detail-e4" value="&lt;div style=&quot;line-height:1.35&quot;&gt;lecture_id, период, тип Lecture&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#596174;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=253.4;spacing=4;jumpStyle=arc;jumpSize=10;exitX=0.3333333333333333;exitY=0.9714045207910317;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0.34615384615384615;entryY=0;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-dfd-detail-p1" target="lab1-dfd-detail-neo">
+          <mxGeometry x="-0.2983763552254054" y="0" relative="1" as="geometry">
+            <mxPoint x="138.7" y="0" as="offset" />
+            <Array as="points">
+              <mxPoint x="1160" y="1660" />
+              <mxPoint x="1020" y="1660" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-dfd-detail-e5" value="&lt;div style=&quot;line-height:1.35&quot;&gt;Студенты, группы, уникальные schedule_id&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#596174;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=320.0;spacing=4;jumpStyle=arc;jumpSize=10;exitX=0.6538461538461539;exitY=0;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0.6666666666666666;entryY=0.9714045207910317;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-dfd-detail-neo" target="lab1-dfd-detail-p1">
+          <mxGeometry x="-0.6621119355579883" y="0" relative="1" as="geometry">
+            <mxPoint x="172.0" y="0" as="offset" />
+            <Array as="points">
+              <mxPoint x="1180" y="1480" />
+              <mxPoint x="1140" y="1480" />
+              <mxPoint x="1140" y="1260" />
+              <mxPoint x="1280" y="1260" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-dfd-detail-e6" value="&lt;div style=&quot;line-height:1.35&quot;&gt;Область занятий и студентов; параметры&lt;br&gt;рейтинга&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#596174;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=305.2;spacing=4;jumpStyle=arc;jumpSize=10;exitX=1.0;exitY=0.5;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0.028595479208968322;entryY=0.3333333333333333;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-dfd-detail-p1" target="lab1-dfd-detail-p2">
+          <mxGeometry x="0.1518421489510744" y="0" relative="1" as="geometry">
+            <mxPoint x="0" y="-38.0" as="offset" />
+            <Array as="points">
+              <mxPoint x="1460" y="1020" />
+              <mxPoint x="1460" y="960" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-dfd-detail-e7" value="&lt;div style=&quot;line-height:1.35&quot;&gt;UUID занятий и студентов; даты; mark=1&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#596174;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=305.2;spacing=4;jumpStyle=arc;jumpSize=10;exitX=0.9714045207910317;exitY=0.6666666666666666;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0;entryY=0.3333333333333333;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-dfd-detail-p2" target="lab1-dfd-detail-pg">
+          <mxGeometry x="0.4083870833388552" y="0" relative="1" as="geometry">
+            <mxPoint x="0" y="-28.0" as="offset" />
+            <Array as="points">
+              <mxPoint x="2540" y="1080" />
+              <mxPoint x="2540" y="1880" />
+              <mxPoint x="1900" y="1880" />
+              <mxPoint x="1900" y="2000" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-dfd-detail-e8" value="&lt;div style=&quot;line-height:1.35&quot;&gt;COUNT DISTINCT посещений&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#596174;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=201.60000000000002;spacing=4;jumpStyle=arc;jumpSize=10;exitX=1;exitY=0.3333333333333333;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0.028595479208968322;entryY=0.6666666666666666;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-dfd-detail-pg" target="lab1-dfd-detail-p2">
+          <mxGeometry x="0.33311159996890893" y="0" relative="1" as="geometry">
+            <mxPoint x="0" y="28.0" as="offset" />
+            <Array as="points">
+              <mxPoint x="2780" y="2000" />
+              <mxPoint x="2780" y="1240" />
+              <mxPoint x="2060" y="1240" />
+              <mxPoint x="2060" y="1080" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-dfd-detail-e9" value="&lt;div style=&quot;line-height:1.35&quot;&gt;Топ по %; UUID студентов и групп;&lt;br&gt;статистика и метаданные&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#596174;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=268.20000000000005;spacing=4;jumpStyle=arc;jumpSize=10;exitX=0.9714045207910317;exitY=0.3333333333333333;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0.028595479208968322;entryY=0.3333333333333333;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-dfd-detail-p2" target="lab1-dfd-detail-p3">
+          <mxGeometry x="0.0" y="0" relative="1" as="geometry">
+            <mxPoint x="0" y="-38.0" as="offset" />
+            <Array as="points" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-dfd-detail-e10" value="&lt;div style=&quot;line-height:1.35&quot;&gt;UUID групп; UUID студентов при промахе&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#596174;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=305.2;spacing=4;jumpStyle=arc;jumpSize=10;exitX=0.915739709641549;exitY=0.7777777777777778;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0;entryY=0.6666666666666666;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-dfd-detail-p3" target="lab1-dfd-detail-pg">
+          <mxGeometry x="-0.017331096950162772" y="0" relative="1" as="geometry">
+            <mxPoint x="0" y="-28.0" as="offset" />
+            <Array as="points">
+              <mxPoint x="3580" y="1120" />
+              <mxPoint x="3580" y="1800" />
+              <mxPoint x="1920" y="1800" />
+              <mxPoint x="1920" y="2080" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-dfd-detail-e11" value="&lt;div style=&quot;line-height:1.35&quot;&gt;Группы, специальности, кафедры; fallback&lt;br&gt;профилей&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#596174;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=320.0;spacing=4;jumpStyle=arc;jumpSize=10;exitX=1;exitY=0.6666666666666666;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0.028595479208968322;entryY=0.6666666666666666;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-dfd-detail-pg" target="lab1-dfd-detail-p3">
+          <mxGeometry x="0.7446763912209824" y="0" relative="1" as="geometry">
+            <mxPoint x="0" y="-38.0" as="offset" />
+            <Array as="points">
+              <mxPoint x="2800" y="2080" />
+              <mxPoint x="2800" y="1080" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-dfd-detail-e12" value="&lt;div style=&quot;line-height:1.35&quot;&gt;MGET: UUID студентов топа&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#596174;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=209.0;spacing=4;jumpStyle=arc;jumpSize=10;exitX=0.915739709641549;exitY=0.2222222222222222;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0;entryY=0.25;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-dfd-detail-p3" target="lab1-dfd-detail-cache">
+          <mxGeometry x="-0.1456378658923051" y="0" relative="1" as="geometry">
+            <mxPoint x="116.5" y="0" as="offset" />
+            <Array as="points">
+              <mxPoint x="3580" y="920" />
+              <mxPoint x="3580" y="340" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-dfd-detail-e13" value="&lt;div style=&quot;line-height:1.35&quot;&gt;Профили JSON или промах / невалидный&lt;br&gt;профиль&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#596174;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=290.40000000000003;spacing=4;jumpStyle=arc;jumpSize=10;exitX=0;exitY=0.5;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0.9874980215217846;entryY=0.3888888888888889;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-dfd-detail-cache" target="lab1-dfd-detail-p3">
+          <mxGeometry x="0.2261412859469054" y="0" relative="1" as="geometry">
+            <mxPoint x="-157.20000000000002" y="0" as="offset" />
+            <Array as="points">
+              <mxPoint x="3560" y="400" />
+              <mxPoint x="3560" y="980" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-dfd-detail-e14" value="&lt;div style=&quot;line-height:1.35&quot;&gt;SETEX: UUID → профиль из PG; 86400 с&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#596174;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=290.40000000000003;spacing=4;jumpStyle=arc;jumpSize=10;exitX=0.9874980215217846;exitY=0.6111111111111112;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0;entryY=0.75;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-dfd-detail-p3" target="lab1-dfd-detail-cache">
+          <mxGeometry x="-0.7007833189964745" y="0" relative="1" as="geometry">
+            <mxPoint x="0" y="-28.0" as="offset" />
+            <Array as="points">
+              <mxPoint x="3840" y="1060" />
+              <mxPoint x="3840" y="560" />
+              <mxPoint x="3740" y="560" />
+              <mxPoint x="3740" y="460" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-dfd-detail-e15" value="&lt;div style=&quot;line-height:1.35&quot;&gt;UUID кафедр итоговых групп&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#596174;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=216.4;spacing=4;jumpStyle=arc;jumpSize=10;exitX=0.5;exitY=1.0;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0.3181818181818182;entryY=0;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-dfd-detail-p3" target="lab1-dfd-detail-mongo">
+          <mxGeometry x="0.5" y="0" relative="1" as="geometry">
+            <mxPoint x="0" y="-28.0" as="offset" />
+            <Array as="points">
+              <mxPoint x="3340" y="1620" />
+              <mxPoint x="3940" y="1620" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-dfd-detail-e16" value="&lt;div style=&quot;line-height:1.35&quot;&gt;Кафедра, институт, вуз&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#596174;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=200;spacing=4;jumpStyle=arc;jumpSize=10;exitX=0.6818181818181818;exitY=0;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0.7777777777777778;entryY=0.915739709641549;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-dfd-detail-mongo" target="lab1-dfd-detail-p3">
+          <mxGeometry x="0.2816857277544005" y="0" relative="1" as="geometry">
+            <mxPoint x="0" y="-28.0" as="offset" />
+            <Array as="points">
+              <mxPoint x="4100" y="1260" />
+              <mxPoint x="3440" y="1260" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-dfd-detail-e17" value="&lt;div style=&quot;line-height:1.35&quot;&gt;ReportResponseDTO: статистика и полные&lt;br&gt;профили&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#596174;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=305.2;spacing=4;jumpStyle=arc;jumpSize=10;exitX=0.2222222222222222;exitY=0.915739709641549;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0.65;entryY=1;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-dfd-detail-p3" target="lab1-dfd-detail-e">
+          <mxGeometry x="0.0096287259981378" y="0" relative="1" as="geometry">
+            <mxPoint x="0" y="-38.0" as="offset" />
+            <Array as="points">
+              <mxPoint x="3240" y="1320" />
+              <mxPoint x="360" y="1320" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-dfd-detail-e18" value="&lt;div style=&quot;line-height:1.35&quot;&gt;Пустой отчёт или ошибка ES / Neo4j&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#596174;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=275.6;spacing=4;jumpStyle=arc;jumpSize=10;exitX=0.028595479208968322;exitY=0.6666666666666666;exitDx=0;exitDy=0;exitPerimeter=0;entryX=1;entryY=0.6428571428571429;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-dfd-detail-p1" target="lab1-dfd-detail-e">
+          <mxGeometry x="0.15832945229691897" y="0" relative="1" as="geometry">
+            <mxPoint x="0" y="-28.0" as="offset" />
+            <Array as="points">
+              <mxPoint x="980" y="1080" />
+              <mxPoint x="980" y="1100" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-dfd-detail-e19" value="&lt;div style=&quot;line-height:1.35&quot;&gt;Пустой отчёт или ошибка SQL&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=8;orthogonalLoop=1;jettySize=0;html=1;endArrow=classic;endFill=1;strokeWidth=1.4;strokeColor=#596174;fontFamily=Arial;fontSize=14;fontColor=#2d3142;labelBackgroundColor=#f5f5f5;labelBorderColor=none;whiteSpace=wrap;labelWidth=223.8;spacing=4;jumpStyle=arc;jumpSize=10;exitX=0.5;exitY=1.0;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0.35;entryY=1;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" source="lab1-dfd-detail-p2" target="lab1-dfd-detail-e">
+          <mxGeometry x="-0.8205128205128205" y="0" relative="1" as="geometry">
+            <mxPoint x="0" y="28.0" as="offset" />
+            <Array as="points">
+              <mxPoint x="2300" y="1260" />
+              <mxPoint x="2000" y="1260" />
+              <mxPoint x="2000" y="1340" />
+              <mxPoint x="240" y="1340" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lab1-dfd-detail-e" value="&lt;div style=&quot;line-height:1.45&quot;&gt;E1 Gateway / прямой HTTP-клиент&lt;/div&gt;" style="html=1;whiteSpace=wrap;fontFamily=Arial;fontSize=16;fontColor=#2d3142;spacing=20;verticalAlign=middle;align=center;strokeWidth=1.5;rounded=0;fillColor=#e9ebef;strokeColor=#2d3142;" parent="1" vertex="1" sourceNodeId="e">
+          <mxGeometry x="100" y="920" width="400" height="280" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-dfd-detail-p1" value="&lt;div style=&quot;line-height:1.45&quot;&gt;2.1&lt;br&gt;Отбор лекций&lt;br&gt;и расписаний&lt;/div&gt;" style="html=1;whiteSpace=wrap;fontFamily=Arial;fontSize=18;fontColor=#2d3142;spacing=20;verticalAlign=middle;align=center;strokeWidth=1.5;ellipse;aspect=fixed;fillColor=#ffffff;strokeColor=#bf4520;" parent="1" vertex="1" sourceNodeId="p1">
+          <mxGeometry x="1040" y="840" width="360" height="360" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-dfd-detail-p2" value="&lt;div style=&quot;line-height:1.45&quot;&gt;2.2&lt;br&gt;Посещения&lt;br&gt;и рейтинг&lt;/div&gt;" style="html=1;whiteSpace=wrap;fontFamily=Arial;fontSize=18;fontColor=#2d3142;spacing=20;verticalAlign=middle;align=center;strokeWidth=1.5;ellipse;aspect=fixed;fillColor=#ffffff;strokeColor=#2d3142;" parent="1" vertex="1" sourceNodeId="p2">
+          <mxGeometry x="2120" y="840" width="360" height="360" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-dfd-detail-p3" value="&lt;div style=&quot;line-height:1.45&quot;&gt;2.3&lt;br&gt;Обогащение&lt;br&gt;и ответ&lt;/div&gt;" style="html=1;whiteSpace=wrap;fontFamily=Arial;fontSize=18;fontColor=#2d3142;spacing=20;verticalAlign=middle;align=center;strokeWidth=1.5;ellipse;aspect=fixed;fillColor=#ffffff;strokeColor=#2d3142;" parent="1" vertex="1" sourceNodeId="p3">
+          <mxGeometry x="3160" y="840" width="360" height="360" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-dfd-detail-es" value="&lt;div style=&quot;line-height:1.45&quot;&gt;D5 Elasticsearch&lt;/div&gt;" style="html=1;whiteSpace=wrap;fontFamily=Arial;fontSize=16;fontColor=#2d3142;spacing=20;verticalAlign=middle;align=center;strokeWidth=1.5;shape=rectangle;fillColor=none;strokeColor=none;container=1;collapsible=0;recursiveResize=0;" parent="1" vertex="1" sourceNodeId="es">
+          <mxGeometry x="840" y="160" width="520" height="240" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-dfd-detail-es-top" value="" style="shape=line;strokeWidth=1.5;strokeColor=#596174;fillColor=none;" parent="lab1-dfd-detail-es" vertex="1" connectable="0">
+          <mxGeometry x="0" y="0" width="520" height="0" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-dfd-detail-es-bottom" value="" style="shape=line;strokeWidth=1.5;strokeColor=#596174;fillColor=none;" parent="lab1-dfd-detail-es" vertex="1" connectable="0">
+          <mxGeometry x="0" y="240" width="520" height="0" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-dfd-detail-neo" value="&lt;div style=&quot;line-height:1.45&quot;&gt;D2 Neo4j&lt;/div&gt;" style="html=1;whiteSpace=wrap;fontFamily=Arial;fontSize=16;fontColor=#2d3142;spacing=20;verticalAlign=middle;align=center;strokeWidth=1.5;shape=rectangle;fillColor=none;strokeColor=none;container=1;collapsible=0;recursiveResize=0;" parent="1" vertex="1" sourceNodeId="neo">
+          <mxGeometry x="840" y="1720" width="520" height="240" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-dfd-detail-neo-top" value="" style="shape=line;strokeWidth=1.5;strokeColor=#596174;fillColor=none;" parent="lab1-dfd-detail-neo" vertex="1" connectable="0">
+          <mxGeometry x="0" y="0" width="520" height="0" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-dfd-detail-neo-bottom" value="" style="shape=line;strokeWidth=1.5;strokeColor=#596174;fillColor=none;" parent="lab1-dfd-detail-neo" vertex="1" connectable="0">
+          <mxGeometry x="0" y="240" width="520" height="0" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-dfd-detail-pg" value="&lt;div style=&quot;line-height:1.45&quot;&gt;D1 PostgreSQL&lt;/div&gt;" style="html=1;whiteSpace=wrap;fontFamily=Arial;fontSize=16;fontColor=#2d3142;spacing=20;verticalAlign=middle;align=center;strokeWidth=1.5;shape=rectangle;fillColor=none;strokeColor=none;container=1;collapsible=0;recursiveResize=0;" parent="1" vertex="1" sourceNodeId="pg">
+          <mxGeometry x="1960" y="1920" width="760" height="240" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-dfd-detail-pg-top" value="" style="shape=line;strokeWidth=1.5;strokeColor=#596174;fillColor=none;" parent="lab1-dfd-detail-pg" vertex="1" connectable="0">
+          <mxGeometry x="0" y="0" width="760" height="0" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-dfd-detail-pg-bottom" value="" style="shape=line;strokeWidth=1.5;strokeColor=#596174;fillColor=none;" parent="lab1-dfd-detail-pg" vertex="1" connectable="0">
+          <mxGeometry x="0" y="240" width="760" height="0" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-dfd-detail-cache" value="&lt;div style=&quot;line-height:1.45&quot;&gt;D4 Redis&lt;/div&gt;" style="html=1;whiteSpace=wrap;fontFamily=Arial;fontSize=16;fontColor=#2d3142;spacing=20;verticalAlign=middle;align=center;strokeWidth=1.5;shape=rectangle;fillColor=none;strokeColor=none;container=1;collapsible=0;recursiveResize=0;" parent="1" vertex="1" sourceNodeId="cache">
+          <mxGeometry x="3800" y="280" width="440" height="240" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-dfd-detail-cache-top" value="" style="shape=line;strokeWidth=1.5;strokeColor=#596174;fillColor=none;" parent="lab1-dfd-detail-cache" vertex="1" connectable="0">
+          <mxGeometry x="0" y="0" width="440" height="0" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-dfd-detail-cache-bottom" value="" style="shape=line;strokeWidth=1.5;strokeColor=#596174;fillColor=none;" parent="lab1-dfd-detail-cache" vertex="1" connectable="0">
+          <mxGeometry x="0" y="240" width="440" height="0" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-dfd-detail-mongo" value="&lt;div style=&quot;line-height:1.45&quot;&gt;D3 MongoDB&lt;/div&gt;" style="html=1;whiteSpace=wrap;fontFamily=Arial;fontSize=16;fontColor=#2d3142;spacing=20;verticalAlign=middle;align=center;strokeWidth=1.5;shape=rectangle;fillColor=none;strokeColor=none;container=1;collapsible=0;recursiveResize=0;" parent="1" vertex="1" sourceNodeId="mongo">
+          <mxGeometry x="3800" y="1680" width="440" height="240" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-dfd-detail-mongo-top" value="" style="shape=line;strokeWidth=1.5;strokeColor=#596174;fillColor=none;" parent="lab1-dfd-detail-mongo" vertex="1" connectable="0">
+          <mxGeometry x="0" y="0" width="440" height="0" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-dfd-detail-mongo-bottom" value="" style="shape=line;strokeWidth=1.5;strokeColor=#596174;fillColor=none;" parent="lab1-dfd-detail-mongo" vertex="1" connectable="0">
+          <mxGeometry x="0" y="240" width="440" height="0" as="geometry" />
+        </mxCell>
+        <mxCell id="lab1-dfd-detail-legend" value="Йордан—Код: круг = процесс · прямоугольник = внешняя сущность · две открытые линии = хранилище · каждая стрелка = отдельный поток данных" style="text;html=1;fontFamily=Arial;fontSize=14;fontColor=#596174;align=left;strokeColor=none;fillColor=none;" parent="1" vertex="1">
+          <mxGeometry x="60" y="2376" width="4280" height="36" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
