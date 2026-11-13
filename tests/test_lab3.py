@@ -1,4 +1,5 @@
 import json
+from contextlib import closing
 import re
 import sqlite3
 import unittest
@@ -32,7 +33,7 @@ def group_row():
     return dict(group_id=GROUP, group_name='Группа', speciality_id=SPEC,
                 department_id=DEPT, enrollment_year=2026, curator=None,
                 speciality_name='Специальность', speciality_code='09.03.01',
-                degree_level='Бакалавриат', duration=4, department_name='Кафедра')
+                degree_level='Бакалавриат', duration=4)
 
 
 def course_row(course_id=COURSE, department_id=DEPT, speciality_id=SPEC):
@@ -155,7 +156,7 @@ class ReportTests(unittest.TestCase):
         collection = self.mongo.return_value.__enter__.return_value.__getitem__.return_value.__getitem__.return_value
         collection.find.return_value = [dict(university_id='university', name='Вуз', institutes=[
             dict(institute_id='other', name='Чужой институт', departments=[dict(department_id=STUDENT2)]),
-            dict(institute_id='institute', name='Институт', departments=[dict(department_id=DEPT)])])]
+            dict(institute_id='institute', name='Институт', departments=[dict(department_id=DEPT, name='Mongo кафедра')])])]
 
     def start_patch(self, name, **kwargs):
         patcher = patch.object(lab, name, **kwargs)
@@ -196,6 +197,26 @@ class ReportTests(unittest.TestCase):
         self.assertIn('collect(DISTINCT st.id)', cypher)
         self.assertIn('collect(DISTINCT sc.id)', cypher)
         self.assertLess(cypher.index('WITH g,'), cypher.index('HAS_SCHEDULE'))
+
+    def test_mongo_department_and_pg_query_have_no_duplicate_hierarchy(self):
+        response = self.get()
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['group']['department_name'], 'Mongo кафедра')
+        for sql, _ in self.executed:
+            for table in ('departments', 'institutes', 'universities'):
+                self.assertNotIn(table, sql.lower())
+
+    def test_missing_or_incomplete_hierarchy_returns_503(self):
+        collection = self.mongo.return_value.__enter__.return_value[lab.MONGO_DB]['university_hierarchy']
+        for docs in ([], [dict(university_id='uni', name='Вуз', institutes=[
+                dict(institute_id='inst', name='Институт', departments=[dict(department_id=DEPT)])])]):
+            with self.subTest(docs=docs):
+                collection.find.return_value = docs
+                self.assertEqual(self.get().status_code, 503)
+
+    def test_mongo_unavailable_returns_503(self):
+        self.mongo.side_effect = RuntimeError('down')
+        self.assertEqual(self.get().status_code, 503)
 
     def test_student_ids_from_scope_are_unique(self):
         self.scope['student_ids'] = [STUDENT, STUDENT, STUDENT2]
@@ -253,22 +274,27 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(self.get().status_code, 200)
         sql = next(sql for sql, _ in self.executed if 'FROM courses' in sql)
         ids = [f'50000000-0000-0000-0000-{index:012d}' for index in range(1, 5)]
-        # Execute the production candidate query in SQLite after adapting only
-        # PostgreSQL parameter syntax. Fixtures vary both speciality and tech flag.
+        # Проверяем запрос на курсах разных кафедр и специальностей.
+        # Для SQLite меняем только запись параметров. Требования к оборудованию на отбор не влияют.
         sql = sql.replace('id = ANY(%s::uuid[])', 'id IN (?, ?, ?, ?)')
         sql = sql.replace('%s::uuid', '?')
         self.assertNotIn('%s', sql)
-        with sqlite3.connect(':memory:') as db:
+        with closing(sqlite3.connect(':memory:')) as db:
+            # Создаём в памяти таблицу с нужными полями курсов.
             db.execute('CREATE TABLE courses (id TEXT, speciality_id TEXT, department_id TEXT, '
                        'name TEXT, description TEXT, semester INTEGER, duration_hours INTEGER, '
                        'lecture_hours INTEGER, practice_hours INTEGER)')
+            # Добавляем таблицу лекций с требованиями к оборудованию.
             db.execute('CREATE TABLE lectures (course_id TEXT, technical_requirements INTEGER)')
             for index, candidate_id in enumerate(ids):
                 dept = DEPT if index < 3 else STUDENT2
                 spec = SPEC if index == 0 else STUDENT2
+                # Добавляем курсы разных кафедр и специальностей.
                 db.execute('INSERT INTO courses VALUES (?, ?, ?, ?, NULL, 1, 72, 36, 36)',
                            (candidate_id, spec, dept, 'Курс'))
+                # У лекций будут разные требования к оборудованию.
                 db.execute('INSERT INTO lectures VALUES (?, ?)', (candidate_id, [0, 1, None, 1][index]))
+            # Выполняем запрос из обработчика на подготовленных данных.
             selected = {row[0] for row in db.execute(sql, (*ids, DEPT))}
         self.assertEqual(selected, set(ids[:3]))
 

@@ -1,0 +1,35 @@
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Arial, sans-serif","fontSize":"16px","clusterBkg":"#f8fafc","clusterBorder":"#72859c"},"flowchart":{"nodeSpacing":40,"rankSpacing":60}}}%%
+flowchart TB
+    User["Пользователь<br/>«Person»"]:::user
+    subgraph System["система"]
+        Gateway["API Gateway<br/>«Container: Python / FastAPI»<br/>Вход, выдача и проверка JWT;<br/>маршрутизация HTTP-запросов"]:::system
+        Lab1["Лабораторная №1<br/>«Container: Python / FastAPI»<br/>Отчёт о посещаемости"]:::component
+        Lab2["Лабораторная №2<br/>«Container: Python / FastAPI»<br/>Слушатели и вместимость"]:::component
+        Lab3["Лабораторная №3<br/>«Container: Python / FastAPI»<br/>Плановые и посещённые часы"]:::component
+        PG[("PostgreSQL<br/>«Container: Database»<br/>Учебные данные и посещения;<br/>ссылка department_id")]:::store
+        Neo[("Neo4j<br/>«Container: Database»<br/>Студенты, группы и расписания")]:::store
+        Mongo[("MongoDB<br/>«Container: Database»<br/>Университет → институт → кафедра<br/>university_hierarchy")]:::store
+        Redis[("Redis<br/>«Container: Cache»<br/>Профили студентов; TTL — сутки")]:::store
+        ES[("Elasticsearch<br/>«Container: Search Engine»<br/>course_materials")]:::store
+    end
+    User -->|"HTTP: вход;<br/>JWT и параметры отчёта"| Gateway
+    Gateway -->|"HTTP: JWT, JSON-отчёт<br/>или ошибка"| User
+    Gateway <-->|"HTTP / JSON:<br/>attendance-report"| Lab1
+    Gateway <-->|"HTTP / JSON:<br/>audience-report"| Lab2
+    Gateway <-->|"HTTP / JSON:<br/>hours-report"| Lab3
+    Lab1 -->|"SQL: посещения,<br/>группы и профили"| PG
+    Lab2 -->|"SQL: курсы, лекции<br/>и department_id"| PG
+    Lab3 -->|"SQL: группа, курсы,<br/>посещения и профили"| PG
+    Lab1 -->|"Bolt / Cypher:<br/>занятия и студенты"| Neo
+    Lab2 -->|"Bolt / Cypher:<br/>занятия и слушатели"| Neo
+    Lab3 -->|"Bolt / Cypher:<br/>состав и занятия группы"| Neo
+    Lab1 -->|"PyMongo: иерархия кафедр"| Mongo
+    Lab2 -->|"PyMongo: иерархия по department_id"| Mongo
+    Lab3 -->|"PyMongo: иерархия группы"| Mongo
+    Lab1 -->|"MGET / SETEX: профили"| Redis
+    Lab3 -->|"MGET / SETEX: профили"| Redis
+    Lab1 -->|"HTTP: полнотекстовый поиск"| ES
+    classDef user fill:#ffe8b6,color:#493712,stroke:#b48630
+    classDef system fill:#e5f0ff,color:#172c45,stroke:#437db3,stroke-width:2px
+    classDef component fill:#e5f0ff,color:#172c45,stroke:#437db3
+    classDef store fill:#f1f4f8,color:#172c45,stroke:#72859c

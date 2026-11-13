@@ -1,0 +1,31 @@
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Arial, sans-serif","fontSize":"16px","clusterBkg":"#f8fafc","clusterBorder":"#72859c"},"flowchart":{"nodeSpacing":40,"rankSpacing":60}}}%%
+flowchart TB
+    subgraph Gateway["API Gateway · gateway.py · «Container»"]
+        Auth["login / verify_jwt<br/>«Component: FastAPI / PyJWT»<br/>Выпуск JWT, проверка подписи и срока"]:::component
+        Proxy["proxy_lab3_report<br/>«Component: FastAPI / httpx»<br/>Передача параметров; timeout 30 с"]:::component
+    end
+    subgraph Lab["lab3-service · lab3.py · «Container»"]
+        Handler["get_hours_report<br/>«Component: FastAPI handler»<br/>Состав группы, курсы кафедры;<br/>плановые и посещённые часы"]:::component
+        Helpers["get_pg_conn<br/>«Component: функции подключения»<br/>Создание клиентов хранилищ"]:::component
+        DTO["Схемы ответа<br/>«Component: Pydantic»<br/>GroupInfoDTO / CourseHoursDTO<br/>StudentHoursDTO / GroupHoursReportDTO"]:::component
+        Profiles["get_student_profiles<br/>«Component: функция»<br/>Кэш, PG fallback и проверка состава"]:::component
+    end
+    PG[("PostgreSQL<br/>«Container: Database»")]:::store
+    Neo[("Neo4j<br/>«Container: Database»")]:::store
+    Mongo[("MongoDB<br/>«Container: Database»")]:::store
+    Redis[("Redis<br/>«Container: Cache»")]:::store
+    Proxy -->|"Depends: проверка JWT"| Auth
+    Proxy -->|"HTTP GET: параметры отчёта"| Handler
+    Handler -->|"JSON-ответ"| Proxy
+    Handler -->|"Создание подключений"| Helpers
+    Helpers -->|"psycopg2 / SQL"| PG
+    Handler -->|"Сборка и валидация ответа"| DTO
+    Handler -->|"Bolt / Cypher: графовая выборка"| Neo
+    Handler -->|"PyMongo: иерархия"| Mongo
+    Handler -->|"UUID студентов и группы"| Profiles
+    Profiles -->|"MGET / SETEX: профили"| Redis
+    Profiles -->|"Подключение при промахе кэша"| Helpers
+    classDef user fill:#ffe8b6,color:#493712,stroke:#b48630
+    classDef system fill:#e5f0ff,color:#172c45,stroke:#437db3,stroke-width:2px
+    classDef component fill:#e5f0ff,color:#172c45,stroke:#437db3
+    classDef store fill:#f1f4f8,color:#172c45,stroke:#72859c

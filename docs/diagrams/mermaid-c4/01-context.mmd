@@ -1,0 +1,10 @@
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Arial, sans-serif","fontSize":"16px","clusterBkg":"#f8fafc","clusterBorder":"#72859c"},"flowchart":{"nodeSpacing":40,"rankSpacing":60}}}%%
+flowchart LR
+    User["Пользователь<br/>«Person»<br/>Запрашивает отчёты"]:::user
+    System["система<br/>«Software System»<br/>Отчёты о посещаемости,<br/>вместимости аудиторий и часах лекций"]:::system
+    User -->|"HTTP: вход и параметры отчёта;<br/>Bearer JWT для отчётных методов"| System
+    System -->|"HTTP: JWT, JSON-отчёт<br/>или сведения об ошибке"| User
+    classDef user fill:#ffe8b6,color:#493712,stroke:#b48630
+    classDef system fill:#e5f0ff,color:#172c45,stroke:#437db3,stroke-width:2px
+    classDef component fill:#e5f0ff,color:#172c45,stroke:#437db3
+    classDef store fill:#f1f4f8,color:#172c45,stroke:#72859c

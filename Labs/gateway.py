@@ -17,7 +17,7 @@ LAB3_URL = os.getenv("LAB3_URL", "http://lab3-service:8003")
 JWT_SECRET = os.getenv("JWT_SECRET")
 JWT_ALGORITHM = "HS256"
 
-# Учетные записи администратора/аналитика для шлюза
+# Логин и пароль для входа в шлюз.
 ADMIN_USERNAME = os.getenv("ANALYTICS_USER", "admin")
 ADMIN_PASSWORD = os.getenv("ANALYTICS_PASSWORD", "admin123")
 
@@ -36,10 +36,10 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
 
 
-# --- Проверка jwt токена ---
+# Проверяем токен перед передачей запроса в лабу.
 def verify_jwt(token: str = Depends(oauth2_scheme)) -> dict:
     try:
-        # Проверяем подпись и срок действия токена
+        # При неверной подписи или истёкшем сроке вернём 401.
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
         return payload
     except jwt.ExpiredSignatureError:
@@ -54,7 +54,7 @@ def verify_jwt(token: str = Depends(oauth2_scheme)) -> dict:
         )
 
 
-# --- Создание JWT токена ---
+# Токен действует 12 часов после входа.
 @app.post(
     "/api/v1/auth/login",
     response_model=TokenResponse,
@@ -78,7 +78,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
 
 
 
-# --- Лаба №1 ---
+# Отчёт о посещаемости.
 @app.get(
     "/api/v1/labs/lab1/attendance-report",
     tags=["Лабораторная работа №1"],
@@ -94,7 +94,7 @@ async def proxy_lab1_report(
     limit: int = Query(10, description="Лимит топа студентов"),
     _user: dict = Depends(verify_jwt)
 ):
-    # Явно собираем все параметры в словарь для отправки
+    # Передаём параметры запроса без изменений.
     params = dict(request.query_params)
     auth_header = request.headers.get("Authorization")
 
@@ -117,7 +117,7 @@ async def proxy_lab1_report(
 
 
 
-# ---Лаба №2 ---
+# Отчёт о слушателях и вместимости.
 @app.get(
     "/api/v1/labs/lab2/audience-report",
     tags=["Лабораторная работа №2"],

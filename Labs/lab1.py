@@ -13,7 +13,7 @@ from pymongo import MongoClient
 import redis
 from dotenv import load_dotenv
 
-# 1. Загрузка переменных окружения
+# При локальном запуске берём .env из корня проекта.
 env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
 load_dotenv(env_path if os.path.exists(env_path) else None)
 
@@ -71,7 +71,7 @@ redis_client = redis.Redis(
 )
 
 
-# 2. DTO Схемы с полной информацией о студенте
+# Формат ответа со сведениями о студенте.
 
 class FullStudentInfoDTO(BaseModel):
     student_id: str
@@ -103,7 +103,7 @@ class ReportResponseDTO(BaseModel):
     students: List[FullStudentInfoDTO]
 
 
-# 3. Вспомогательные функции
+# Подключения к базам данных.
 
 def get_pg_conn():
     try:
@@ -128,7 +128,7 @@ def get_es_client():
         )
 
 
-# 4. Эндпоинты
+# Отчёт о посещаемости лекций.
 
 @app.get(
     "/api/v1/labs/lab1/attendance-report",
@@ -147,15 +147,16 @@ def get_attendance_report(
                                           json_schema_extra={"example": 100.0}),
         limit: int = Query(10, ge=1, le=100, description="Лимит топа студентов", json_schema_extra={"example": 10})
 ):
-    # Проверка периода и диапазона посещаемости.
+    # Проверяем порядок дат и границ посещаемости до обращения к БД.
     if period_start > period_end:
         raise HTTPException(status_code=400, detail="period_start не может быть позже period_end")
     if min_attendance_pct > max_attendance_pct:
         raise HTTPException(status_code=400, detail="min_attendance_pct не может быть больше max_attendance_pct")
 
-    # ШАГ 1: Поиск в материалах лекций в Elasticsearch
+    # Ищем материалы лекций по введённой фразе.
     es = get_es_client()
     try:
+        # Из совпадений нужны только lecture_id. За один запрос берём до 10 000 материалов.
         es_res = es.search(
             index="course_materials",
             body={
@@ -184,7 +185,7 @@ def get_attendance_report(
             matching_lectures_count=0, students=[]
         )
 
-    # ШАГ 2: В Neo4j находим группы по расписанию найденных лекций и их студентов
+    # По найденным лекциям ищем занятия за период, группы и студентов.
     student_schedules = {}
     scheduled_lecture_ids = set()
     try:
@@ -197,8 +198,10 @@ def get_attendance_report(
             WITH g, collect(DISTINCT sc.id) AS schedule_ids,
                  collect(DISTINCT l.id) AS lecture_ids
             MATCH (st:Student)-[:BELONGS_TO]->(g)
-            RETURN st.id AS student_id, g.id AS group_id, schedule_ids, lecture_ids
+            RETURN g.id AS group_id, schedule_ids, lecture_ids,
+                   collect(DISTINCT st.id) AS student_ids
             """
+            # Возвращаем занятия один раз на группу, вместе со списком её студентов.
             res = session.run(
                 cypher_query,
                 lecture_ids=lecture_ids,
@@ -207,10 +210,12 @@ def get_attendance_report(
             )
             for r in res:
                 scheduled_lecture_ids.update(r["lecture_ids"])
-                student_schedules[r["student_id"]] = {
+                group_scope = {
                     "group_id": r["group_id"],
                     "schedule_ids": r["schedule_ids"]
                 }
+                for student_id in r["student_ids"]:
+                    student_schedules[student_id] = group_scope
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -224,7 +229,7 @@ def get_attendance_report(
             matching_lectures_count=len(scheduled_lecture_ids), students=[]
         )
 
-    # ШАГ 3: По полученным расписаниям PostgreSQL считает посещения
+    # Передаём в PostgreSQL только студентов и занятия, найденные в графе.
     student_ids = list(student_schedules)
     schedule_ids = list({
         schedule_id
@@ -246,6 +251,7 @@ def get_attendance_report(
         """
         with closing(get_pg_conn()) as pg_conn:
             with pg_conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Считаем занятия с отметкой 1 за период. Группа студента должна совпадать с группой занятия.
                 cur.execute(attendance_sql, (schedule_ids, student_ids, period_start, period_end))
                 attendance_stats = {
                     str(row["student_id"]): row["attended_classes"]
@@ -279,7 +285,7 @@ def get_attendance_report(
             matching_lectures_count=len(scheduled_lecture_ids), students=[]
         )
 
-    # ШАГ 4: PostgreSQL возвращает атрибуты только групп итогового списка
+    # После отбора по посещаемости получаем названия групп.
     result_group_ids = sorted({item["group_id"] for item in ranked_students})
     group_sql = """
     SELECT
@@ -288,22 +294,22 @@ def get_attendance_report(
         g.name AS group_name,
         sp.name AS speciality_name,
         sp.code AS speciality_code,
-        sp.degree_level,
-        d.name AS department_name
+        sp.degree_level
     FROM groups g
     JOIN specialities sp ON sp.id = g.speciality_id
-    JOIN departments d ON d.id = g.department_id
     WHERE g.id = ANY(%s::uuid[]);
     """
     with closing(get_pg_conn()) as pg_conn:
         with pg_conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Читаем группы итогового списка и их специальности. От кафедры здесь только UUID.
             cur.execute(group_sql, (result_group_ids,))
             group_rows = cur.fetchall()
 
-    # ШАГ 5: Профили студентов читаем из Redis по student_id.
+    # Пробуем взять сведения о студентах из кэша.
     top_student_ids = [item["student_id"] for item in ranked_students]
     student_profiles = {}
     try:
+        # Читаем всех отобранных студентов одним запросом по UUID.
         cached_profiles = redis_client.mget(top_student_ids)
         for student_id, cached_profile in zip(top_student_ids, cached_profiles):
             if cached_profile:
@@ -330,6 +336,7 @@ def get_attendance_report(
         """
         with closing(get_pg_conn()) as pg_conn:
             with pg_conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # То, чего нет в кэше, читаем из PostgreSQL одним запросом.
                 cur.execute(pg_sql, (missing_student_ids,))
                 for row in cur.fetchall():
                     student_id = str(row["student_id"])
@@ -345,11 +352,12 @@ def get_attendance_report(
                     }
                     student_profiles[student_id] = profile
                     try:
+                        # Сохраняем сведения о студенте в кэше на сутки.
                         redis_client.setex(student_id, 86400, json.dumps(profile, ensure_ascii=False))
                     except Exception:
                         pass
 
-    # ШАГ 6: Из MongoDB получаем вуз и институт для кафедр подходящих групп
+    # Получаем названия подразделений из MongoDB.
     department_hierarchy = {}
     target_department_ids = {
         str(row["department_id"]) for row in group_rows
@@ -357,6 +365,7 @@ def get_attendance_report(
     mongo_uri = f"mongodb://{MONGO_USER}:{MONGO_PASS}@{MONGO_HOST}:{MONGO_PORT}/?authSource=admin"
     try:
         with MongoClient(mongo_uri, serverSelectionTimeoutMS=3000) as mongo_client:
+            # Находим документы вузов с нужными кафедрами, затем выбираем кафедры из вложенных массивов.
             hierarchy_docs = mongo_client[MONGO_DB]["university_hierarchy"].find(
                 {"institutes.departments.department_id": {"$in": list(target_department_ids)}},
                 {"_id": 0, "name": 1, "institutes": 1}
@@ -374,10 +383,14 @@ def get_attendance_report(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Ошибка чтения иерархии MongoDB: {str(e)}"
+            detail="Ошибка чтения иерархии MongoDB"
         )
 
-    # ШАГ 7: Собираем профиль из Redis, атрибуты группы из PostgreSQL и вуз из MongoDB
+    if any(dept_id not in department_hierarchy or not all(department_hierarchy[dept_id].values())
+           for dept_id in target_department_ids):
+        raise HTTPException(status_code=503, detail="Иерархия кафедры в MongoDB неполна")
+
+    # Используем группу из графа: в кэше она могла устареть.
     students_res = []
     groups_by_id = {str(row["group_id"]): row for row in group_rows}
     for stats in ranked_students:
@@ -398,9 +411,9 @@ def get_attendance_report(
                 speciality_name=group["speciality_name"],
                 speciality_code=group["speciality_code"],
                 degree_level=group["degree_level"],
-                department_name=hierarchy.get("department_name") or group["department_name"],
-                institute_name=hierarchy.get("institute_name") or "Не указан",
-                university_name=hierarchy.get("university_name") or "Не указан",
+                department_name=hierarchy["department_name"],
+                institute_name=hierarchy["institute_name"],
+                university_name=hierarchy["university_name"],
                 total_classes=stats["total_classes"],
                 attended_classes=stats["attended_classes"],
                 attendance_percentage=stats["attendance_percentage"]

@@ -117,7 +117,7 @@ def get_pg_conn():
 
 
 def get_student_profiles(student_ids, group_id):
-    """Общий с лабой 1 формат: student_id -> JSON, TTL 24 часа."""
+    """Формат кэша тот же, что в первой лабе: UUID студента и его данные на сутки."""
     if not student_ids:
         return {}
     profiles = {}
@@ -126,6 +126,7 @@ def get_student_profiles(student_ids, group_id):
         'student_card_number', 'status',
     }
     try:
+        # Читаем студентов одним запросом. Записи другой группы и неполные данные из кэша не используем.
         for student_id, raw in zip(student_ids, redis_client.mget(student_ids)):
             if raw is None:
                 continue
@@ -161,7 +162,9 @@ def get_student_profiles(student_ids, group_id):
         try:
             with redis_client.pipeline(transaction=False) as pipeline:
                 for student_id, profile in fetched.items():
+                    # Ключ кэша совпадает с UUID студента, срок хранения сутки.
                     pipeline.setex(student_id, 86400, json.dumps(profile, ensure_ascii=False))
+                # Отправляем накопленные записи в Redis за один вызов.
                 pipeline.execute()
         except redis.RedisError as exc:
             logger.warning('Запись кэша студентов: %s', type(exc).__name__)
@@ -181,34 +184,33 @@ def get_hours_report(
         raise HTTPException(status_code=400, detail='period_start не может быть позже period_end')
     group_id = str(group_id)
 
-    # 1. PostgreSQL: точечный запрос группы и её кафедры.
+    # Читаем группу и специальность. Названия подразделений позже возьмём из MongoDB.
     with closing(get_pg_conn()) as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute('''
                 SELECT g.id AS group_id, g.name AS group_name, g.speciality_id, g.department_id,
                        g.enrollment_year, g.curator, sp.name AS speciality_name,
-                       sp.code AS speciality_code, sp.degree_level, sp.duration,
-                       d.name AS department_name
+                       sp.code AS speciality_code, sp.degree_level, sp.duration
                 FROM groups g
                 JOIN specialities sp ON sp.id = g.speciality_id
-                JOIN departments d ON d.id = g.department_id
                 WHERE g.id = %s::uuid;
             ''', (group_id,))
             group_row = cur.fetchone()
     if group_row is None:
         raise HTTPException(status_code=404, detail='Группа не найдена')
     group = GroupInfoDTO(**{
-        **dict(group_row), 'group_id': group_id,
+        **dict(group_row), 'group_id': group_id, 'department_name': None,
         'department_id': str(group_row['department_id']),
         'speciality_id': str(group_row['speciality_id']),
     })
 
-    # 2. Neo4j: WITH собирает студентов до обхода занятий и устраняет Student × Schedule.
+    # Собираем студентов до обхода расписания, чтобы не размножать строки занятий.
     try:
         with GraphDatabase.driver(
             f'bolt://{NEO4J_HOST}:{NEO4J_BOLT_PORT}', auth=(NEO4J_USER, NEO4J_PASS),
         ) as driver:
             with driver.session() as session:
+                # Читаем состав группы и занятия её курсов за нужные даты.
                 scope = session.run('''
                     MATCH (g:Group {id: $group_id})
                     OPTIONAL MATCH (st:Student)-[:BELONGS_TO]->(g)
@@ -230,7 +232,7 @@ def get_hours_report(
         item['course_id']: sorted(set(item['schedule_ids'])) for item in scope['courses']
     }
 
-    # 3. PostgreSQL: специальная дисциплина определяется кафедрой курса, а не technical_requirements.
+    # Отбираем курсы кафедры группы, независимо от требований к оборудованию.
     course_rows = []
     attendance = {}
     if schedule_by_course:
@@ -269,15 +271,16 @@ def get_hours_report(
                         for row in cur.fetchall()
                     }
 
-    # 4. Redis: карточки всех студентов группы, промахи одним запросом в PostgreSQL.
+    # Студенты без посещений тоже должны попасть в отчёт.
     profiles = get_student_profiles(student_ids, group_id)
 
-    # 5. MongoDB: только иерархия кафедры заданной группы.
+    # Ищем подразделения по кафедре группы.
     try:
         with MongoClient(
             host=MONGO_HOST, port=int(MONGO_PORT), username=MONGO_USER,
             password=MONGO_PASS, authSource='admin', serverSelectionTimeoutMS=3000,
         ) as client:
+            # В документе вуза выбираем кафедру группы и её институт.
             documents = client[MONGO_DB]['university_hierarchy'].find(
                 {'institutes.departments.department_id': group.department_id},
                 {'_id': 0, 'university_id': 1, 'name': 1, 'institutes': 1},
@@ -286,12 +289,16 @@ def get_hours_report(
                 for institute in university.get('institutes', []):
                     for department in institute.get('departments', []):
                         if department.get('department_id') == group.department_id:
+                            group.department_name = department.get('name')
                             group.institute_id = institute.get('institute_id')
                             group.institute_name = institute.get('name')
                             group.university_id = university.get('university_id')
                             group.university_name = university.get('name')
     except Exception:
         raise HTTPException(status_code=503, detail='MongoDB недоступна')
+    if not all((group.department_name, group.institute_id, group.institute_name,
+                group.university_id, group.university_name)):
+        raise HTTPException(status_code=503, detail='Иерархия кафедры в MongoDB неполна')
 
     students = []
     for student_id in student_ids:

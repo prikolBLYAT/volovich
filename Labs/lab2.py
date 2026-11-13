@@ -14,21 +14,21 @@ load_dotenv(env_path if os.path.exists(env_path) else None)
 
 DEFAULT_HOST = os.getenv("DB_HOST", "localhost")
 
-# PostgreSQL
+# Подключение к PostgreSQL.
 PG_HOST = os.getenv("POSTGRES_HOST") or DEFAULT_HOST
 PG_PORT = os.getenv("POSTGRES_PORT", "5432")
 PG_USER = os.getenv("POSTGRES_USER", "admin")
 PG_PASS = os.getenv("POSTGRES_PASSWORD", "superpassword123!")
 PG_DB = os.getenv("POSTGRES_DB", "postgres")
 
-# MongoDB
+# Подключение к MongoDB.
 MONGO_HOST = os.getenv("MONGO_HOST") or DEFAULT_HOST
 MONGO_PORT = os.getenv("MONGO_PORT", "27017")
 MONGO_USER = os.getenv("MONGO_INITDB_ROOT_USERNAME", "admin")
 MONGO_PASS = os.getenv("MONGO_INITDB_ROOT_PASSWORD", "superpassword123!")
 MONGO_DB = os.getenv("MONGO_INITDB_DATABASE", "db")
 
-# Neo4j
+# Подключение к Neo4j.
 NEO4J_HOST = os.getenv("NEO4J_HOST") or DEFAULT_HOST
 NEO4J_BOLT_PORT = os.getenv("NEO4J_BOLT_PORT", "7687")
 neo4j_auth_raw = os.getenv("NEO4J_AUTH", "neo4j/superpassword123!").split('/')
@@ -93,7 +93,7 @@ def get_audience_report(
         semester: int = Query(..., ge=1, description="Семестр обучения", json_schema_extra={"example": 1}),
         enrollment_year: int = Query(..., ge=1, description="Год поступления (набора) групп", json_schema_extra={"example": 2023})
 ):
-    # 1. PostgreSQL: одним запросом отбираем курсы и лекции с техтребованиями.
+    # Ищем лекции заданного семестра с требованиями к оборудованию.
     pg_sql = """
     SELECT
         c.id AS course_id,
@@ -123,6 +123,7 @@ def get_audience_report(
 
     with closing(get_pg_conn()) as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Сразу читаем названия и остальные поля курсов и лекций для отчёта.
             cur.execute(pg_sql, (semester,))
             lecture_rows = cur.fetchall()
 
@@ -135,7 +136,7 @@ def get_audience_report(
         courses.setdefault(course_id, {"info": row, "lectures": []})["lectures"].append(row)
     lecture_ids = [str(row["lecture_id"]) for row in lecture_rows]
 
-    # 2. Neo4j: группы выбранного набора со студентами, без дублирования по занятиям.
+    # В графе ищем группы нужного года поступления и их занятия.
     lecture_stats = {}
     course_groups = {}
     try:
@@ -154,6 +155,7 @@ def get_audience_report(
                 RETURN c.id AS course_id, l.id AS lecture_id, g.id AS group_id,
                        scheduled_count, count(DISTINCT st) AS listeners_count
                 """
+                # Студентов считаем после занятий, чтобы не посчитать одного человека несколько раз.
                 result = session.run(
                     cypher_query, course_ids=list(courses), lecture_ids=lecture_ids,
                     enrollment_year=enrollment_year
@@ -163,13 +165,15 @@ def get_audience_report(
                     lecture_id = record["lecture_id"]
                     group_id = record["group_id"]
                     listeners = record["listeners_count"]
+                    if listeners <= 0 or record["scheduled_count"] <= 0:
+                        continue
                     stats = lecture_stats.setdefault(lecture_id, {
                         "scheduled_count": 0, "listeners_count": 0, "room_capacity": 0
                     })
                     stats["scheduled_count"] += record["scheduled_count"]
                     stats["listeners_count"] += listeners
                     stats["room_capacity"] = max(stats["room_capacity"], listeners)
-                    # Студент принадлежит одной группе; повторные лекции не увеличивают итог курса.
+                    # В числе слушателей курса каждую группу учитываем один раз.
                     course_groups.setdefault(course_id, {})[group_id] = listeners
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"Neo4j недоступен: {str(e)}")
@@ -178,47 +182,45 @@ def get_audience_report(
     if not courses:
         return []
 
-    # 3. PostgreSQL: кафедра -> институт -> идентификатор университета, только для найденных курсов.
+    # За названиями подразделений идём после отбора курсов.
     department_ids = sorted({str(course["info"]["department_id"]) for course in courses.values()})
     department_map = {}
-    with closing(get_pg_conn()) as conn:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("""
-                SELECT d.id AS department_id, d.name AS department_name,
-                       i.name AS institute_name, i.university_id
-                FROM departments d
-                JOIN institutes i ON i.id = d.institute_id
-                WHERE d.id = ANY(%s::uuid[]);
-            """, (department_ids,))
-            department_map = {str(row["department_id"]): row for row in cur.fetchall()}
-
-    # 4. MongoDB: только документы нужных университетов, без загрузки всей иерархии.
-    university_ids = sorted({str(row["university_id"]) for row in department_map.values()})
-    university_map = {}
-    if university_ids:
-        try:
-            with MongoClient(
-                host=MONGO_HOST, port=int(MONGO_PORT), username=MONGO_USER,
-                password=MONGO_PASS, authSource="admin", serverSelectionTimeoutMS=2000
-            ) as mongo_client:
-                documents = mongo_client[MONGO_DB]["university_hierarchy"].find(
-                    {"university_id": {"$in": university_ids}},
-                    {"_id": 0, "university_id": 1, "name": 1}
-                )
-                university_map = {doc["university_id"]: doc["name"] for doc in documents}
-        except Exception as e:
-            raise HTTPException(status_code=503, detail=f"MongoDB недоступна: {str(e)}")
+    try:
+        with MongoClient(
+            host=MONGO_HOST, port=int(MONGO_PORT), username=MONGO_USER,
+            password=MONGO_PASS, authSource="admin", serverSelectionTimeoutMS=2000
+        ) as mongo_client:
+            # Находим в MongoDB кафедры отобранных курсов, их институты и вузы.
+            documents = mongo_client[MONGO_DB]["university_hierarchy"].find(
+                {"institutes.departments.department_id": {"$in": department_ids}},
+                {"_id": 0, "university_id": 1, "name": 1, "institutes": 1}
+            )
+            for university in documents:
+                for institute in university.get("institutes", []):
+                    for department in institute.get("departments", []):
+                        if department.get("department_id") in department_ids:
+                            department_map[department["department_id"]] = {
+                                "department_name": department.get("name"),
+                                "institute_name": institute.get("name"),
+                                "university_id": university.get("university_id"),
+                                "university_name": university.get("name")
+                            }
+    except Exception:
+        raise HTTPException(status_code=503, detail="MongoDB недоступна")
+    if any(dept_id not in department_map or not all(department_map[dept_id].values())
+           for dept_id in department_ids):
+        raise HTTPException(status_code=503, detail="Иерархия кафедры в MongoDB неполна")
 
     reports = []
     for course_id, course in courses.items():
         row = course["info"]
         department_id = str(row["department_id"])
         department = department_map.get(department_id, {})
-        university_id = str(department["university_id"]) if department else None
+        university_id = department["university_id"]
         lectures = []
         for lecture in course["lectures"]:
             lecture_id = str(lecture["lecture_id"])
-            # В отчёт входят только лекции с занятиями и слушателями выбранного набора.
+            # Пропускаем лекции без занятий или слушателей.
             stats = lecture_stats.get(lecture_id)
             if not stats or stats["scheduled_count"] <= 0 or stats["listeners_count"] <= 0:
                 continue
@@ -247,7 +249,7 @@ def get_audience_report(
             department_name=department.get("department_name"),
             institute_name=department.get("institute_name"),
             university_id=university_id,
-            university_name=university_map.get(university_id),
+            university_name=department["university_name"],
             duration_hours=row["duration_hours"],
             lecture_hours=row["lecture_hours"],
             practice_hours=row["practice_hours"],

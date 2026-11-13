@@ -1,0 +1,28 @@
+flowchart TB
+    User["Внешняя сущность E1<br/>Пользователь"]:::entity
+    P1(["1.0 Приём и авторизация запроса<br/>API Gateway"]):::process
+    P2(["2.0 Отбор курсов и лекций<br/>заданного семестра"]):::process
+    P3(["3.0 Выборка занятий и студентов<br/>групп заданного набора"]):::process
+    P4(["4.0 Расчёт слушателей<br/>и вместимости аудитории"]):::process
+    P5(["5.0 Получение подразделений<br/>и университета курса"]):::process
+    P6(["6.0 Формирование<br/>JSON-отчёта"]):::process
+    D1a[("D1.1 PostgreSQL<br/>Курсы и лекции")]:::store
+    D2[("D2 Neo4j<br/>Курс ← лекция ← расписание<br/>← группа ← студент")]:::store
+    D3[("D3 MongoDB<br/>university_hierarchy")]:::store
+    User -->|"JWT; semester; enrollment_year"| P1
+    P1 -->|"Семестр и год поступления"| P2
+    P2 -->|"Семестр; type = Lecture;<br/>technical_requirements = true"| D1a
+    D1a -->|"Курсы, лекции, булевый флаг,<br/>department_id и часы курса"| P2
+    P2 -->|"course_id, lecture_id,<br/>год поступления; метаданные курса"| P3
+    P3 -->|"course_id, lecture_id,<br/>Group.enrollment_year"| D2
+    D2 -->|"По лекции и группе:<br/>уникальные занятия и число студентов"| P3
+    P3 -->|"Числа занятий и студентов;<br/>метаданные курсов и лекций"| P4
+    P4 -->|"Показатели лекций и курсов;<br/>department_id найденных курсов"| P5
+    P5 -->|"Только department_id найденных курсов"| D3
+    D3 -->|"Кафедра, институт, университет;<br/>их названия и UUID"| P5
+    P5 -->|"Курсы, лекции, университет,<br/>слушатели и вместимость"| P6
+    P6 -->|"JSON-список курсов с лекциями"| P1
+    P1 -->|"HTTP-ответ с отчётом"| User
+    classDef entity fill:#ffe8b6,color:#493712,stroke:#b48630
+    classDef process fill:#e5f0ff,color:#172c45,stroke:#437db3
+    classDef store fill:#f1f4f8,color:#172c45,stroke:#72859c

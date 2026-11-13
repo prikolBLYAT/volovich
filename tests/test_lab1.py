@@ -54,7 +54,10 @@ class AttendanceGraphTests(unittest.TestCase):
         self.cache.mget.return_value = [json.dumps(profile())]
         self.patch('redis_client', self.cache)
         self.mongo = MagicMock()
-        self.mongo.__enter__.return_value[lab.MONGO_DB]['university_hierarchy'].find.return_value = []
+        self.collection = self.mongo.__enter__.return_value[lab.MONGO_DB]['university_hierarchy']
+        self.collection.find.return_value = [dict(university_id='university', name='Mongo вуз', institutes=[
+            dict(institute_id='institute', name='Mongo институт', departments=[
+                dict(department_id=DEPARTMENT, name='Mongo кафедра')])])]
         self.mongo_constructor = self.patch('MongoClient', return_value=self.mongo)
         self.client = TestClient(lab.app)
         self.addCleanup(self.client.close)
@@ -68,16 +71,43 @@ class AttendanceGraphTests(unittest.TestCase):
 
     def set_graph_students(self):
         self.graph_rows = [
-            dict(student_id=STUDENT, group_id=GROUP,
+            dict(student_ids=[STUDENT], group_id=GROUP,
                  schedule_ids=SCHEDULES[:2], lecture_ids=[LECTURE]),
-            dict(student_id=OTHER_STUDENT, group_id=OTHER_GROUP,
+            dict(student_ids=[OTHER_STUDENT], group_id=OTHER_GROUP,
                  schedule_ids=SCHEDULES[2:], lecture_ids=[LECTURE]),
         ]
 
     def group_metadata(self):
         return dict(group_id=GROUP, department_id=DEPARTMENT, group_name='Группа',
                     speciality_name='Информатика', speciality_code='09.03.01',
-                    degree_level='Бакалавриат', department_name='Кафедра')
+                    degree_level='Бакалавриат')
+
+    def test_hierarchy_is_only_from_mongo_without_pg_hierarchy_joins(self):
+        self.set_graph_students()
+        self.cursor.fetchall.side_effect = [[], [self.group_metadata()]]
+        response = self.client.get(PATH, params=self.params)
+        self.assertEqual(response.status_code, 200, response.text)
+        student = response.json()['students'][0]
+        self.assertEqual([student[key] for key in ('department_name', 'institute_name', 'university_name')],
+                         ['Mongo кафедра', 'Mongo институт', 'Mongo вуз'])
+        sql = self.cursor.execute.call_args.args[0].lower()
+        for table in ('departments', 'institutes', 'universities'):
+            self.assertNotIn(table, sql)
+
+    def test_missing_or_incomplete_hierarchy_returns_503(self):
+        for docs in ([], [dict(name='Вуз', institutes=[dict(name='Институт', departments=[
+                dict(department_id=DEPARTMENT)])])]):
+            with self.subTest(docs=docs):
+                self.set_graph_students()
+                self.cursor.fetchall.side_effect = [[], [self.group_metadata()]]
+                self.collection.find.return_value = docs
+                self.assertEqual(self.client.get(PATH, params=self.params).status_code, 503)
+
+    def test_mongo_unavailable_returns_503(self):
+        self.set_graph_students()
+        self.cursor.fetchall.side_effect = [[], [self.group_metadata()]]
+        self.collection.find.side_effect = RuntimeError('unavailable')
+        self.assertEqual(self.client.get(PATH, params=self.params).status_code, 503)
 
     def test_no_search_hits_skips_other_databases(self):
         self.es.search.return_value = {'hits': {'hits': []}}
@@ -149,8 +179,29 @@ class AttendanceGraphTests(unittest.TestCase):
         self.cache.mget.assert_not_called()
         self.mongo_constructor.assert_not_called()
 
+    def test_group_schedule_is_shared_by_all_its_students(self):
+        self.graph_rows = [dict(group_id=GROUP, student_ids=[STUDENT, OTHER_STUDENT],
+                                schedule_ids=SCHEDULES[:2], lecture_ids=[LECTURE])]
+        self.cursor.fetchall.side_effect = [
+            [dict(student_id=STUDENT, attended_classes=1)], [self.group_metadata()]]
+        self.cache.mget.return_value = [
+            json.dumps({**profile(), 'student_id': OTHER_STUDENT}), json.dumps(profile())]
+        response = self.client.get(PATH, params={**self.params, 'limit': 2})
+        self.assertEqual(response.status_code, 200, response.text)
+        students = response.json()['students']
+        self.assertEqual([(s['student_id'], s['total_classes'], s['attended_classes'],
+                           s['attendance_percentage']) for s in students],
+                         [(OTHER_STUDENT, 2, 0, 0.0), (STUDENT, 2, 1, 50.0)])
+        self.assertEqual(response.json()['matching_lectures_count'], 1)
+        self.assertEqual(self.events, ['neo4j', 'postgres', 'postgres'])
+        query = self.session.run.call_args.args[0]
+        self.assertIn('collect(DISTINCT st.id) AS student_ids', query)
+        attendance = self.cursor.execute.call_args_list[0]
+        self.assertEqual(set(attendance.args[1][0]), set(SCHEDULES[:2]))
+        self.assertEqual(set(attendance.args[1][1]), {STUDENT, OTHER_STUDENT})
+
     def test_cold_cache_fetches_profile_after_group_metadata(self):
-        self.graph_rows = [dict(student_id=STUDENT, group_id=GROUP,
+        self.graph_rows = [dict(student_ids=[STUDENT], group_id=GROUP,
                                 schedule_ids=SCHEDULES[:1], lecture_ids=[LECTURE])]
         self.cache.mget.return_value = [None]
         self.cursor.fetchall.side_effect = [[], [self.group_metadata()], [profile()]]
@@ -166,7 +217,7 @@ class AttendanceGraphTests(unittest.TestCase):
         self.assertEqual(json.loads(value), profile())
 
     def test_stale_cached_group_does_not_override_graph_membership(self):
-        self.graph_rows = [dict(student_id=STUDENT, group_id=GROUP,
+        self.graph_rows = [dict(student_ids=[STUDENT], group_id=GROUP,
                                 schedule_ids=SCHEDULES[:1], lecture_ids=[LECTURE])]
         self.cache.mget.return_value = [json.dumps({**profile(), 'group_id': OTHER_GROUP})]
         self.cursor.fetchall.side_effect = [[], [self.group_metadata()]]

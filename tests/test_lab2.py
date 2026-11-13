@@ -36,9 +36,7 @@ class AudienceReportTests(unittest.TestCase):
     def setUp(self):
         self.connection = MagicMock()
         self.cursor = self.connection.cursor.return_value.__enter__.return_value
-        self.metadata = dict(department_id=DEPARTMENT, department_name='Кафедра',
-                             institute_name='Институт', university_id=UNIVERSITY)
-        self.cursor.fetchall.side_effect = [[lecture_row()], [self.metadata]]
+        self.cursor.fetchall.side_effect = [[lecture_row()]]
         self.pg = self.patch(lab, 'get_pg_conn', return_value=self.connection)
         self.driver = MagicMock()
         self.session = self.driver.session.return_value.__enter__.return_value
@@ -47,7 +45,9 @@ class AudienceReportTests(unittest.TestCase):
         self.driver.__enter__.return_value = self.driver
         self.mongo = MagicMock()
         self.mongo.__enter__.return_value[lab.MONGO_DB]['university_hierarchy'].find.return_value = [
-            dict(university_id=UNIVERSITY, name='Университет')
+            dict(university_id=UNIVERSITY, name='Университет', institutes=[
+                dict(institute_id='institute', name='Mongo институт', departments=[
+                    dict(department_id=DEPARTMENT, name='Mongo кафедра')])])
         ]
         self.mongo_constructor = self.patch(lab, 'MongoClient', return_value=self.mongo)
         self.client = TestClient(lab.app)
@@ -68,7 +68,6 @@ class AudienceReportTests(unittest.TestCase):
         self.cursor.fetchall.side_effect = [
             [lecture_row(), lecture_row(UNSCHEDULED),
              lecture_row(OTHER_LECTURE, OTHER_COURSE, OTHER_DEPARTMENT)],
-            [self.metadata],
         ]
         reports = self.request_report()
         self.assertEqual(len(reports), 1)
@@ -82,7 +81,13 @@ class AudienceReportTests(unittest.TestCase):
         self.assertEqual(course['lectures'][0]['scheduled_classes_count'], 1)
         self.assertEqual(course['lectures'][0]['total_listeners_count'], 5)
         self.assertEqual(course['lectures'][0]['required_room_capacity'], 5)
-        self.assertEqual(self.cursor.execute.call_args.args[1], ([DEPARTMENT],))
+        self.assertEqual(self.cursor.execute.call_count, 1)
+        self.assertEqual(course['department_name'], 'Mongo кафедра')
+        self.assertEqual(course['institute_name'], 'Mongo институт')
+        self.assertEqual(course['university_id'], UNIVERSITY)
+        collection = self.mongo.__enter__.return_value[lab.MONGO_DB]['university_hierarchy']
+        self.assertEqual(collection.find.call_args.args[0],
+                         {'institutes.departments.department_id': {'$in': [DEPARTMENT]}})
         self.assertEqual(self.session.run.call_args.kwargs['enrollment_year'], 2023)
 
     def test_empty_graph_result_skips_course_metadata_and_mongo(self):
@@ -94,7 +99,7 @@ class AudienceReportTests(unittest.TestCase):
 
     def test_repeated_classes_and_groups_do_not_inflate_listener_totals(self):
         self.cursor.fetchall.side_effect = [
-            [lecture_row(), lecture_row(OTHER_LECTURE)], [self.metadata]
+            [lecture_row(), lecture_row(OTHER_LECTURE)]
         ]
         self.session.run.return_value = [
             graph_row(schedules=3, listeners=5),
@@ -114,12 +119,31 @@ class AudienceReportTests(unittest.TestCase):
     def test_zero_listener_course_is_not_emitted(self):
         self.session.run.return_value = [graph_row(schedules=2, listeners=0)]
         self.assertEqual(self.request_report(), [])
+        self.assertEqual(self.mongo_constructor.call_count, 0)
+
+    def test_zero_schedule_course_skips_mongo(self):
+        self.session.run.return_value = [graph_row(schedules=0, listeners=5)]
+        self.assertEqual(self.request_report(), [])
+        self.mongo_constructor.assert_not_called()
 
     def test_no_postgres_candidates_skips_graph_and_mongo(self):
         self.cursor.fetchall.side_effect = [[]]
         self.assertEqual(self.request_report(), [])
         self.graph.assert_not_called()
         self.mongo_constructor.assert_not_called()
+
+    def test_missing_or_incomplete_hierarchy_returns_503(self):
+        collection = self.mongo.__enter__.return_value[lab.MONGO_DB]['university_hierarchy']
+        for docs in ([], [dict(university_id=UNIVERSITY, name='Вуз', institutes=[
+                dict(institute_id='institute', name='Институт', departments=[dict(department_id=DEPARTMENT)])])]):
+            with self.subTest(docs=docs):
+                self.cursor.fetchall.side_effect = [[lecture_row()]]
+                collection.find.return_value = docs
+                self.assertEqual(self.client.get(PATH, params=self.params).status_code, 503)
+
+    def test_mongo_unavailable_returns_503(self):
+        self.mongo.__enter__.return_value[lab.MONGO_DB]['university_hierarchy'].find.side_effect = RuntimeError('down')
+        self.assertEqual(self.client.get(PATH, params=self.params).status_code, 503)
 
     def test_graph_failure_returns_503(self):
         self.session.run.side_effect = RuntimeError('test graph unavailable')

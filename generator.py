@@ -4,42 +4,43 @@ import random
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from faker import Faker
+from generator_undo import run_undo
 
-# Импорты драйверов СУБД
+# Драйверы баз данных.
 import psycopg2
 from psycopg2.extras import execute_values, Json
 from neo4j import GraphDatabase
 from pymongo import MongoClient
 from elasticsearch import Elasticsearch, helpers, ApiError
 
-# Загрузка переменных из .env
+# Настройки генерации и очистки лежат в корневом .env.
 env_path = os.path.join(os.path.dirname(__file__), '.env')
 load_dotenv(env_path)
 
 DB_HOST = os.getenv("DB_HOST", "localhost")
 
-# PostgreSQL
+# Подключение к PostgreSQL.
 PG_HOST = os.getenv("POSTGRES_HOST", DB_HOST)
 PG_PORT = os.getenv("POSTGRES_PORT", "5432")
 PG_USER = os.getenv("POSTGRES_USER", "admin")
 PG_PASS = os.getenv("POSTGRES_PASSWORD", "superpassword123!")
 PG_DB = os.getenv("POSTGRES_DB", "postgres")
 
-# Neo4j
+# Подключение к Neo4j.
 NEO4J_HOST = os.getenv("NEO4J_HOST", DB_HOST)
 NEO4J_BOLT_PORT = os.getenv("NEO4J_BOLT_PORT", "7687")
 neo4j_auth_raw = os.getenv("NEO4J_AUTH", "neo4j/superpassword123!").split('/')
 NEO4J_USER = neo4j_auth_raw[0] if len(neo4j_auth_raw) > 0 else "neo4j"
 NEO4J_PASS = neo4j_auth_raw[1] if len(neo4j_auth_raw) > 1 else "superpassword123!"
 
-# MongoDB
+# Подключение к MongoDB.
 MONGO_HOST = os.getenv("MONGO_HOST", DB_HOST)
 MONGO_PORT = os.getenv("MONGO_PORT", "27017")
 MONGO_USER = os.getenv("MONGO_INITDB_ROOT_USERNAME", "admin")
 MONGO_PASS = os.getenv("MONGO_INITDB_ROOT_PASSWORD", "superpassword123!")
 MONGO_DB = os.getenv("MONGO_INITDB_DATABASE", "db")
 
-# Elasticsearch
+# Подключение к Elasticsearch.
 ES_HOST_IP = os.getenv("ES_HOST", DB_HOST)
 ES_PORT = os.getenv("ES_PORT", "9200")
 ES_PASS = os.getenv("ELASTIC_PASSWORD", "superpassword123!")
@@ -47,7 +48,7 @@ ES_USER = "elastic"
 
 fake = Faker('ru_RU')
 
-# Объемы генерации
+# Сколько данных генерировать.
 NUM_UNIVERSITIES = 2
 INSTITUTES_PER_UNI = 2
 DEPTS_PER_INST = 2
@@ -80,9 +81,6 @@ COURSE_NAMES = [
 def generate_random_data():
     print("Генерация случайных данных...")
 
-    universities = []
-    institutes = []
-    departments = []
     specialities = []
     dept_specs = []
     groups = []
@@ -108,8 +106,6 @@ def generate_random_data():
         uni_address = fake.address()
         uni_website = f"https://www.{uni_short.lower()}.edu.ru"
 
-        universities.append((uni_id, uni_name, uni_short, uni_address, uni_website))
-
         uni_institutes_doc = []
 
         for i_idx in range(INSTITUTES_PER_UNI):
@@ -118,8 +114,6 @@ def generate_random_data():
             inst_short = f"И-{inst_name.split()[-1][:3].upper()}"
             inst_dean = fake.name_male()
 
-            institutes.append((inst_id, uni_id, inst_name, inst_short, inst_dean))
-
             inst_departments_doc = []
 
             for d_idx in range(DEPTS_PER_INST):
@@ -127,8 +121,6 @@ def generate_random_data():
                 dept_name = f"Кафедра '{random.choice(DEPT_TOPICS)}'"
                 dept_short = f"КБ-{random.randint(1, 99)}"
                 dept_head = fake.name_male()
-
-                departments.append((dept_id, inst_id, dept_name, dept_short, dept_head))
 
                 inst_departments_doc.append({
                     "department_id": dept_id,
@@ -150,7 +142,7 @@ def generate_random_data():
                     for g_idx in range(GROUPS_PER_SPEC):
                         group_id = str(uuid.uuid4())
 
-                        # Год поступления от 2023 до 2026
+                        # Год поступления всей группы.
                         enrollment_year = random.randint(2023, 2026)
 
                         group_name = f"{dept_short[:2]}-{random.randint(10, 99)}-{enrollment_year % 100}"
@@ -284,9 +276,6 @@ def generate_random_data():
         })
 
     return {
-        "universities": universities,
-        "institutes": institutes,
-        "departments": departments,
         "specialities": specialities,
         "dept_specs": dept_specs,
         "groups": groups,
@@ -303,37 +292,25 @@ def generate_random_data():
 
 
 def init_pg_tables(pg_cur):
+    # Функция для UUID по умолчанию в таблицах.
     pg_cur.execute('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";')
 
+    # Создаём таблицы. Кафедры остаются в MongoDB, здесь только department_id.
     pg_cur.execute("""
-    CREATE TABLE IF NOT EXISTS universities (
-        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-        name VARCHAR(255) NOT NULL, short_name VARCHAR(50), address TEXT, website VARCHAR(255)
-    );
-    CREATE TABLE IF NOT EXISTS institutes (
-        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-        university_id UUID NOT NULL REFERENCES universities(id) ON DELETE CASCADE,
-        name VARCHAR(255) NOT NULL, short_name VARCHAR(50), dean VARCHAR(150)
-    );
-    CREATE TABLE IF NOT EXISTS departments (
-        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-        institute_id UUID NOT NULL REFERENCES institutes(id) ON DELETE CASCADE,
-        name VARCHAR(255) NOT NULL, short_name VARCHAR(50), head VARCHAR(150)
-    );
     CREATE TABLE IF NOT EXISTS specialities (
         id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
         name VARCHAR(255) NOT NULL, code VARCHAR(50) NOT NULL UNIQUE, degree_level VARCHAR(50), duration INT
     );
     CREATE TABLE IF NOT EXISTS department_specialties (
         id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-        department_id UUID NOT NULL REFERENCES departments(id) ON DELETE CASCADE,
+        department_id UUID NOT NULL,
         speciality_id UUID NOT NULL REFERENCES specialities(id) ON DELETE CASCADE,
         CONSTRAINT idx_dept_spec UNIQUE (department_id, speciality_id)
     );
     CREATE TABLE IF NOT EXISTS groups (
         id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
         speciality_id UUID NOT NULL REFERENCES specialities(id) ON DELETE CASCADE,
-        department_id UUID NOT NULL REFERENCES departments(id) ON DELETE CASCADE,
+        department_id UUID NOT NULL,
         name VARCHAR(100) NOT NULL, enrollment_year INT NOT NULL, curator VARCHAR(150)
     );
     CREATE TABLE IF NOT EXISTS students (
@@ -346,7 +323,7 @@ def init_pg_tables(pg_cur):
     CREATE TABLE IF NOT EXISTS courses (
         id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
         speciality_id UUID NOT NULL REFERENCES specialities(id) ON DELETE CASCADE,
-        department_id UUID NOT NULL REFERENCES departments(id) ON DELETE CASCADE,
+        department_id UUID NOT NULL,
         name VARCHAR(255) NOT NULL, description TEXT, semester INT NOT NULL,
         duration_hours INT, lecture_hours INT, practice_hours INT
     );
@@ -398,6 +375,7 @@ def create_attendance_partitions(pg_cur, start_year=2026, start_month=9, months_
         from_date = f"{y}-{m:02d}-01"
         to_date = f"{next_y}-{next_m:02d}-01"
 
+        # Партиция на месяц: от первого числа до первого числа следующего месяца, не включая его.
         pg_cur.execute(f"""
             CREATE TABLE IF NOT EXISTS {partition_name} PARTITION OF attendance
             FOR VALUES FROM ('{from_date}') TO ('{to_date}');
@@ -408,6 +386,7 @@ def create_attendance_partitions(pg_cur, start_year=2026, start_month=9, months_
 def init_es_index(es_client):
     index_name = "course_materials"
     try:
+        # Если индекс уже есть, повторно его не создаём.
         exists = es_client.indices.exists(index=index_name)
     except ApiError:
         exists = False
@@ -438,6 +417,7 @@ def init_es_index(es_client):
                 "created_at": {"type": "date"}
             }
         }
+        # Настраиваем поля и поиск по русскому тексту.
         es_client.indices.create(index=index_name, settings=settings, mappings=mappings)
 
 
@@ -445,51 +425,45 @@ def run_seeder():
     data = generate_random_data()
 
     print(f"Сгенерировано:")
-    print(f" - universities: {len(data['universities'])}")
+    print(f" - universities: {len(data['mongo_hierarchy'])}")
     print(f" - students: {len(data['students'])}")
     print(f" - lectures: {len(data['lectures'])}")
     print(f" - schedules: {len(data['schedules'])}")
     print(f" - attendances: {len(data['attendances'])}")
 
-    # 1. PostgreSQL
+    run_undo()
+
+    # Заполняем PostgreSQL.
     print("\nЗаполнение PostgreSQL")
-    with psycopg2.connect(host=PG_HOST, port=PG_PORT, user=PG_USER, password=PG_PASS, dbname=PG_DB) as pg_conn:
+    with psycopg2.connect(host=PG_HOST, port=PG_PORT, user=PG_USER, password=PG_PASS, dbname=PG_DB, connect_timeout=5) as pg_conn:
         with pg_conn.cursor() as pg_cur:
-            pg_cur.execute("""
-                DROP TABLE IF EXISTS attendance, schedule, course_materials, lectures, classes, courses, 
-                students, groups, department_specialties, specialities, departments, 
-                institutes, universities CASCADE;
-            """)
             init_pg_tables(pg_cur)
             create_attendance_partitions(pg_cur, start_year=2026, start_month=9, months_count=4)
 
-            execute_values(pg_cur,
-                           "INSERT INTO universities (id, name, short_name, address, website) VALUES %s ON CONFLICT DO NOTHING",
-                           data["universities"])
-            execute_values(pg_cur,
-                           "INSERT INTO institutes (id, university_id, name, short_name, dean) VALUES %s ON CONFLICT DO NOTHING",
-                           data["institutes"])
-            execute_values(pg_cur,
-                           "INSERT INTO departments (id, institute_id, name, short_name, head) VALUES %s ON CONFLICT DO NOTHING",
-                           data["departments"])
+            # Сначала специальности, на них ссылаются группы и курсы.
             execute_values(pg_cur,
                            "INSERT INTO specialities (id, name, code, degree_level, duration) VALUES %s ON CONFLICT (code) DO NOTHING",
                            data["specialities"])
+            # Привязываем специальности к UUID кафедр из MongoDB.
             execute_values(pg_cur,
                            "INSERT INTO department_specialties (id, department_id, speciality_id) VALUES %s ON CONFLICT DO NOTHING",
                            data["dept_specs"])
+            # Добавляем группы с годом поступления, специальностью и кафедрой.
             execute_values(pg_cur,
                            "INSERT INTO groups (id, speciality_id, department_id, name, enrollment_year, curator) VALUES %s ON CONFLICT DO NOTHING",
                            data["groups"])
+            # Добавляем студентов в созданные группы.
             execute_values(pg_cur,
                            "INSERT INTO students (id, group_id, first_name, second_name, email, phone, student_card_number, status) VALUES %s ON CONFLICT DO NOTHING",
                            data["students"])
+            # Добавляем курсы с семестром, часами, специальностью и кафедрой.
             execute_values(pg_cur,
                            "INSERT INTO courses (id, speciality_id, department_id, name, description, semester, duration_hours, lecture_hours, practice_hours) VALUES %s ON CONFLICT DO NOTHING",
                            data["courses"])
 
             lectures_tuples = [(l["id"], l["course_id"], l["title"], l["technical_requirements"], l["annotation"], l["type"]) for l in
                                data["lectures"]]
+            # Добавляем лекции с типом занятия и требованиями к оборудованию.
             execute_values(pg_cur,
                            "INSERT INTO lectures (id, course_id, title, technical_requirements, annotation, type) VALUES %s ON CONFLICT DO NOTHING",
                            lectures_tuples)
@@ -498,32 +472,34 @@ def run_seeder():
                 material["id"], material["lecture_id"], material["content_type"], material["title"],
                 material["file_url"], Json(material["metadata"])
             ) for material in data["course_materials"]]
+            # Сохраняем материалы лекций. Их тексты затем загрузим в Elasticsearch.
             execute_values(pg_cur,
                            "INSERT INTO course_materials (id, lecture_id, content_type, title, file_url, metadata) VALUES %s ON CONFLICT DO NOTHING",
                            material_tuples)
 
             sched_tuples = [(s["id"], s["class_id"], s["group_id"], s["date"], s["period"], s["room"], s["lecturer"]) for
                             s in data["schedules"]]
+            # Добавляем расписание с теми же UUID, что и в графе.
             execute_values(pg_cur,
                            "INSERT INTO schedule (id, class_id, group_id, schedule_date, period, room, lecturer) VALUES %s ON CONFLICT DO NOTHING",
                            sched_tuples)
 
+            # Добавляем посещения. Партицию PostgreSQL выберет по дате.
             execute_values(pg_cur,
                            "INSERT INTO attendance (id, schedule_id, student_id, date, period, mark, marked_at) VALUES %s ON CONFLICT DO NOTHING",
                            data["attendances"])
     print("PostgreSQL готова!")
 
-    # 2. Neo4j
+    # Заполняем Neo4j узлами и связями из того же набора.
     print("\nЗаполнение Neo4j")
     with GraphDatabase.driver(f"bolt://{NEO4J_HOST}:{NEO4J_BOLT_PORT}", auth=(NEO4J_USER, NEO4J_PASS)) as neo4j_driver:
         with neo4j_driver.session() as session:
-            session.run("MATCH (n) DETACH DELETE n;")
-
             nodes_by_label = {}
             for label, props in data["neo_nodes"]:
                 nodes_by_label.setdefault(label, {})[props["id"]] = props
 
             for label, props_dict in nodes_by_label.items():
+                # Загружаем узлы пачками по меткам, сохраняя UUID из PostgreSQL.
                 session.run(
                     f"UNWIND $batch AS row MERGE (n:{label} {{id: row.id}}) SET n += row",
                     batch=list(props_dict.values())
@@ -534,31 +510,28 @@ def run_seeder():
                 rels_by_type.setdefault(rel_type, []).append({"src": src_id, "dst": dst_id})
 
             for rel_type, rel_list in rels_by_type.items():
+                # Находим узлы по UUID и добавляем связи между ними.
                 session.run(
                     f"UNWIND $batch AS row MATCH (a {{id: row.src}}), (b {{id: row.dst}}) MERGE (a)-[:{rel_type}]->(b)",
                     batch=rel_list
                 )
     print("Neo4j готова!")
 
-    # 3. MongoDB (Исключительно коллекция university_hierarchy)
+    # В MongoDB каждый вуз хранится вместе с институтами и кафедрами.
     print("\nЗаполнение MongoDB")
     mongo_uri = f"mongodb://{MONGO_USER}:{MONGO_PASS}@{MONGO_HOST}:{MONGO_PORT}/?authSource=admin"
     with MongoClient(mongo_uri) as mongo_client:
         mongo_db = mongo_client[MONGO_DB]
-        mongo_db.drop_collection("course_materials")
         mongo_collection = mongo_db["university_hierarchy"]
-        mongo_collection.delete_many({})
 
         if data["mongo_hierarchy"]:
+            # Загружаем документы всех вузов за один вызов.
             res = mongo_collection.insert_many(data["mongo_hierarchy"])
     print("MongoDB готова!")
 
-    # 4. Elasticsearch
+    # Готовим материалы для поиска в Elasticsearch.
     print("\nЗаполнение Elasticsearch")
     with Elasticsearch([f"http://{ES_HOST_IP}:{ES_PORT}"], basic_auth=(ES_USER, ES_PASS)) as es_client:
-        # PostgreSQL и Neo4j выше пересозданы с новыми UUID; старые материалы больше не актуальны.
-        if es_client.indices.exists(index="course_materials"):
-            es_client.indices.delete(index="course_materials")
         init_es_index(es_client)
 
         es_actions = []
@@ -579,6 +552,7 @@ def run_seeder():
                 }
             })
         if es_actions:
+            # Загружаем материалы пачкой. Возвращаемся, когда их уже можно искать.
             helpers.bulk(es_client, es_actions, refresh="wait_for")
     print("Elasticsearch готова!")
     return data
