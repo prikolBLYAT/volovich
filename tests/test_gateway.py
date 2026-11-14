@@ -11,13 +11,12 @@ from Labs import gateway
 
 PREFIX = '/api/v1/labs/'
 SECRET = 'gateway-test-secret-not-used-in-deployment'
-GROUP = '08ac3f6b-1650-4099-b338-08e7711813a1'
 DEFAULTS = {
     'lab1/attendance-report': dict(term='Базы данных', period_start='2026-09-01',
                                    period_end='2026-09-30', min_attendance_pct=0.0,
                                    max_attendance_pct=100.0, limit=10),
     'lab2/audience-report': dict(semester=2, enrollment_year=2023),
-    'lab3/hours-report': dict(group_id=GROUP, period_start='2026-09-01',
+    'lab3/hours-report': dict(period_start='2026-09-01',
                              period_end='2026-09-30'),
 }
 
@@ -58,7 +57,7 @@ class GatewayTests(unittest.TestCase):
         overrides = {
             'lab1/attendance-report': dict(term='индексы', period_end='2026-09-08', limit=3),
             'lab2/audience-report': dict(semester=4, enrollment_year=2024),
-            'lab3/hours-report': dict(group_id='another-group', period_start='2026-09-03'),
+            'lab3/hours-report': dict(period_start='2026-09-03'),
         }
         for path, values in overrides.items():
             with self.subTest(path=path):
@@ -66,7 +65,13 @@ class GatewayTests(unittest.TestCase):
                                            headers=self.headers)
                 self.assertEqual(response.status_code, 200, response.text)
                 self.assertEqual(self.upstream.get.call_args.kwargs['params'],
-                                 {**DEFAULTS[path], **values, 'extra': 'value'})
+                                 {**DEFAULTS[path], **values, **({'extra': 'value'} if not path.startswith('lab3/') else {})})
+
+    def test_lab3_does_not_forward_group_filter(self):
+        response = self.client.get(PREFIX + 'lab3/hours-report',
+                                   params={'group_id': 'old-group'}, headers=self.headers)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(self.upstream.get.call_args.kwargs['params'], DEFAULTS['lab3/hours-report'])
 
     def test_openapi_defaults_are_optional(self):
         paths = self.client.get('/openapi.json').json()['paths']

@@ -57,7 +57,7 @@ GROUPS_PER_SPEC = 2
 STUDENTS_PER_GROUP = 5
 COURSES_PER_SPEC = 2
 LECTURES_PER_COURSE = 10
-DAYS_OF_SCHEDULE = 5
+DAYS_OF_SCHEDULE = 15
 CLASSES_PER_DAY = 3
 
 UNI_PREFIXES = ["Национальный исследовательский", "Государственный", "Российский", "Московский", "Санкт-Петербургский"]

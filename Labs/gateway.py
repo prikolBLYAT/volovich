@@ -152,11 +152,10 @@ async def proxy_lab2_report(
 @app.get(
     "/api/v1/labs/lab3/hours-report",
     tags=["Лабораторная работа №3"],
-    summary="Плановые и посещённые часы лекций по группе"
+    summary="Плановые и посещённые часы лекций по всем группам"
 )
 async def proxy_lab3_report(
     request: Request,
-    group_id: str = Query("08ac3f6b-1650-4099-b338-08e7711813a1", description="Идентификатор группы"),
     period_start: str = Query("2026-09-01", description="Начало периода (YYYY-MM-DD)"),
     period_end: str = Query("2026-09-30", description="Конец периода (YYYY-MM-DD)"),
     _user: dict = Depends(verify_jwt)
@@ -166,8 +165,7 @@ async def proxy_lab3_report(
         try:
             response = await client.get(
                 f"{LAB3_URL}/api/v1/labs/lab3/hours-report",
-                params=dict(request.query_params, group_id=group_id,
-                            period_start=period_start, period_end=period_end),
+                params={"period_start": period_start, "period_end": period_end},
                 headers={"Authorization": auth_header} if auth_header else {}
             )
         except httpx.RequestError:

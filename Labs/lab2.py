@@ -49,7 +49,6 @@ class LectureAudienceInfoDTO(BaseModel):
     lecture_type: str
     technical_requirements: bool
     scheduled_classes_count: int
-    total_listeners_count: int
     required_room_capacity: int
 
 
@@ -168,11 +167,10 @@ def get_audience_report(
                     if listeners <= 0 or record["scheduled_count"] <= 0:
                         continue
                     stats = lecture_stats.setdefault(lecture_id, {
-                        "scheduled_count": 0, "listeners_count": 0, "room_capacity": 0
+                        "scheduled_count": 0, "listeners_count": 0
                     })
                     stats["scheduled_count"] += record["scheduled_count"]
                     stats["listeners_count"] += listeners
-                    stats["room_capacity"] = max(stats["room_capacity"], listeners)
                     # В числе слушателей курса каждую группу учитываем один раз.
                     course_groups.setdefault(course_id, {})[group_id] = listeners
     except Exception as e:
@@ -231,8 +229,7 @@ def get_audience_report(
                 lecture_type=lecture["lecture_type"],
                 technical_requirements=lecture["technical_requirements"],
                 scheduled_classes_count=stats["scheduled_count"],
-                total_listeners_count=stats["listeners_count"],
-                required_room_capacity=stats["room_capacity"]
+                required_room_capacity=stats["listeners_count"]
             ))
         if not lectures:
             continue

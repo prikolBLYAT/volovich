@@ -79,7 +79,7 @@ class AudienceReportTests(unittest.TestCase):
         self.assertEqual(course['university_name'], 'Университет')
         self.assertEqual(course['lectures'][0]['annotation'], 'Аннотация')
         self.assertEqual(course['lectures'][0]['scheduled_classes_count'], 1)
-        self.assertEqual(course['lectures'][0]['total_listeners_count'], 5)
+        self.assertNotIn('total_listeners_count', course['lectures'][0])
         self.assertEqual(course['lectures'][0]['required_room_capacity'], 5)
         self.assertEqual(self.cursor.execute.call_count, 1)
         self.assertEqual(course['department_name'], 'Mongo кафедра')
@@ -110,10 +110,10 @@ class AudienceReportTests(unittest.TestCase):
         self.assertEqual(course['total_enrolled_students'], 12)
         lectures = {item['lecture_id']: item for item in course['lectures']}
         self.assertEqual(lectures[LECTURE]['scheduled_classes_count'], 5)
-        self.assertEqual(lectures[LECTURE]['total_listeners_count'], 12)
-        self.assertEqual(lectures[LECTURE]['required_room_capacity'], 7)
+        self.assertNotIn('total_listeners_count', lectures[LECTURE])
+        self.assertEqual(lectures[LECTURE]['required_room_capacity'], 12)
         self.assertEqual(lectures[OTHER_LECTURE]['scheduled_classes_count'], 4)
-        self.assertEqual(lectures[OTHER_LECTURE]['total_listeners_count'], 5)
+        self.assertNotIn('total_listeners_count', lectures[OTHER_LECTURE])
         self.assertEqual(lectures[OTHER_LECTURE]['required_room_capacity'], 5)
 
     def test_zero_listener_course_is_not_emitted(self):

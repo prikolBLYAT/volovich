@@ -4,7 +4,6 @@ import os
 from contextlib import closing
 from datetime import date
 from typing import List, Optional
-from uuid import UUID
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query
@@ -47,7 +46,7 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title='Лабораторная работа №3',
-    description='Запланированные и посещённые часы лекций по студентам группы и курсам её кафедры.',
+    description='Запланированные и посещённые часы лекций по студентам всех групп и курсам их кафедр.',
     version='1.0.0',
 )
 
@@ -116,10 +115,11 @@ def get_pg_conn():
         raise HTTPException(status_code=503, detail='PostgreSQL недоступен')
 
 
-def get_student_profiles(student_ids, group_id):
+def get_student_profiles(student_groups):
     """Формат кэша тот же, что в первой лабе: UUID студента и его данные на сутки."""
-    if not student_ids:
+    if not student_groups:
         return {}
+    student_ids = list(student_groups)
     profiles = {}
     required_fields = {
         'student_id', 'group_id', 'first_name', 'second_name', 'email', 'phone',
@@ -135,7 +135,7 @@ def get_student_profiles(student_ids, group_id):
             except (ValueError, TypeError):
                 continue
             if (isinstance(profile, dict) and required_fields.issubset(profile)
-                    and profile['student_id'] == student_id and profile['group_id'] == group_id):
+                    and profile['student_id'] == student_id and profile['group_id'] == student_groups[student_id]):
                 profiles[student_id] = profile
     except redis.RedisError as exc:
         logger.warning('Чтение кэша студентов: %s', type(exc).__name__)
@@ -148,15 +148,18 @@ def get_student_profiles(student_ids, group_id):
                     SELECT id AS student_id, group_id, first_name, second_name,
                            email, phone, student_card_number, status
                     FROM students
-                    WHERE id = ANY(%s::uuid[]) AND group_id = %s::uuid;
-                ''', (missing_ids, group_id))
+                    WHERE (id, group_id) IN (
+                        SELECT * FROM unnest(%s::uuid[], %s::uuid[])
+                    );
+                ''', (missing_ids, [student_groups[sid] for sid in missing_ids]))
                 fetched = {
                     str(row['student_id']): {
                         **dict(row), 'student_id': str(row['student_id']), 'group_id': str(row['group_id']),
                     }
                     for row in cur.fetchall()
                 }
-        if set(fetched) != set(missing_ids):
+        if (set(fetched) != set(missing_ids)
+                or any(row['group_id'] != student_groups[sid] for sid, row in fetched.items())):
             raise HTTPException(status_code=503, detail='Состав группы в PostgreSQL и Neo4j не согласован')
         profiles.update(fetched)
         try:
@@ -172,19 +175,17 @@ def get_student_profiles(student_ids, group_id):
 
 
 @app.get(
-    '/api/v1/labs/lab3/hours-report', response_model=GroupHoursReportDTO,
-    tags=['Лабораторная работа №3'], summary='Плановые и посещённые часы лекций по группе',
+    '/api/v1/labs/lab3/hours-report', response_model=List[GroupHoursReportDTO],
+    tags=['Лабораторная работа №3'], summary='Плановые и посещённые часы лекций по всем группам',
 )
 def get_hours_report(
-    group_id: UUID = Query(..., description='Идентификатор группы'),
     period_start: date = Query(..., description='Начало периода, включительно'),
     period_end: date = Query(..., description='Конец периода, включительно'),
 ):
     if period_start > period_end:
         raise HTTPException(status_code=400, detail='period_start не может быть позже period_end')
-    group_id = str(group_id)
 
-    # Читаем группу и специальность. Названия подразделений позже возьмём из MongoDB.
+    # Названия подразделений читаем только из MongoDB.
     with closing(get_pg_conn()) as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute('''
@@ -193,126 +194,156 @@ def get_hours_report(
                        sp.code AS speciality_code, sp.degree_level, sp.duration
                 FROM groups g
                 JOIN specialities sp ON sp.id = g.speciality_id
-                WHERE g.id = %s::uuid;
-            ''', (group_id,))
-            group_row = cur.fetchone()
-    if group_row is None:
-        raise HTTPException(status_code=404, detail='Группа не найдена')
-    group = GroupInfoDTO(**{
-        **dict(group_row), 'group_id': group_id, 'department_name': None,
-        'department_id': str(group_row['department_id']),
-        'speciality_id': str(group_row['speciality_id']),
-    })
+                ORDER BY g.id;
+            ''')
+            group_rows = cur.fetchall()
+    groups = {
+        str(row['group_id']): GroupInfoDTO(**{
+            **dict(row), 'group_id': str(row['group_id']), 'department_name': None,
+            'department_id': str(row['department_id']), 'speciality_id': str(row['speciality_id']),
+        }) for row in group_rows
+    }
+    if not groups:
+        return []
 
-    # Собираем студентов до обхода расписания, чтобы не размножать строки занятий.
+    # Собираем состав до расписания, чтобы студенты не размножали строки занятий.
     try:
         with GraphDatabase.driver(
             f'bolt://{NEO4J_HOST}:{NEO4J_BOLT_PORT}', auth=(NEO4J_USER, NEO4J_PASS),
         ) as driver:
             with driver.session() as session:
-                # Читаем состав группы и занятия её курсов за нужные даты.
-                scope = session.run('''
-                    MATCH (g:Group {id: $group_id})
+                scopes = session.run('''
+                    MATCH (g:Group)
+                    WHERE g.id IN $group_ids
                     OPTIONAL MATCH (st:Student)-[:BELONGS_TO]->(g)
                     WITH g, collect(DISTINCT st.id) AS student_ids
                     OPTIONAL MATCH (g)-[:HAS_SCHEDULE]->(sc:Schedule)
                                    -[:FOR_LECTURE]->(l:Lecture)-[:OF_COURSE]->(c:Course)
                     WHERE sc.date >= $period_start AND sc.date <= $period_end
                       AND l.type = 'Lecture'
-                    WITH student_ids, c.id AS course_id, collect(DISTINCT sc.id) AS schedule_ids
-                    RETURN student_ids, collect(CASE WHEN course_id IS NULL THEN null
+                    WITH g, student_ids, c.id AS course_id, collect(DISTINCT sc.id) AS schedule_ids
+                    RETURN g.id AS group_id, student_ids,
+                           collect(CASE WHEN course_id IS NULL THEN null
                            ELSE {course_id: course_id, schedule_ids: schedule_ids} END) AS courses
-                ''', group_id=group_id, period_start=str(period_start), period_end=str(period_end)).single()
+                ''', group_ids=list(groups), period_start=str(period_start), period_end=str(period_end)).data()
     except Exception:
         raise HTTPException(status_code=503, detail='Neo4j недоступен')
-    if scope is None:
+    if {scope['group_id'] for scope in scopes} != set(groups):
         raise HTTPException(status_code=503, detail='Группа отсутствует в Neo4j')
-    student_ids = sorted(set(scope['student_ids']))
-    schedule_by_course = {
-        item['course_id']: sorted(set(item['schedule_ids'])) for item in scope['courses']
-    }
 
-    # Отбираем курсы кафедры группы, независимо от требований к оборудованию.
-    course_rows = []
+    students_by_group = {}
+    schedules_by_group = {}
+    student_groups = {}
+    for scope in scopes:
+        group_id = scope['group_id']
+        students_by_group[group_id] = sorted(set(scope['student_ids']))
+        schedules_by_group[group_id] = {
+            item['course_id']: sorted(set(item['schedule_ids'])) for item in scope['courses']
+        }
+        for student_id in students_by_group[group_id]:
+            if student_id in student_groups and student_groups[student_id] != group_id:
+                raise HTTPException(status_code=503, detail='Студент принадлежит нескольким группам в Neo4j')
+            student_groups[student_id] = group_id
+    student_groups = dict(sorted(student_groups.items()))
+
+    # Передаём точные пары, иначе курс чужой кафедры может попасть в другую группу.
+    candidate_pairs = sorted({
+        (course_id, groups[group_id].department_id)
+        for group_id, courses in schedules_by_group.items() for course_id in courses
+    })
+    courses_by_group = {group_id: [] for group_id in groups}
     attendance = {}
-    if schedule_by_course:
+    if candidate_pairs:
         with closing(get_pg_conn()) as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute('''
                     SELECT id AS course_id, speciality_id, department_id, name AS course_name,
                            description, semester, duration_hours, lecture_hours, practice_hours
                     FROM courses
-                    WHERE id = ANY(%s::uuid[]) AND department_id = %s::uuid
+                    WHERE (id, department_id) IN (
+                        SELECT * FROM unnest(%s::uuid[], %s::uuid[])
+                    )
                     ORDER BY semester, name, id;
-                ''', (list(schedule_by_course), group.department_id))
+                ''', ([pair[0] for pair in candidate_pairs], [pair[1] for pair in candidate_pairs]))
                 course_rows = cur.fetchall()
-                selected_pairs = [
-                    (schedule_id, str(course['course_id']))
-                    for course in course_rows
-                    for schedule_id in schedule_by_course[str(course['course_id'])]
+                for group_id, group in groups.items():
+                    courses_by_group[group_id] = [
+                        row for row in course_rows if str(row['department_id']) == group.department_id
+                        and str(row['course_id']) in schedules_by_group[group_id]
+                    ]
+                selected_scope = [
+                    (schedule_id, str(course['course_id']), group_id)
+                    for group_id, courses in courses_by_group.items() for course in courses
+                    for schedule_id in schedules_by_group[group_id][str(course['course_id'])]
                 ]
-                if selected_pairs and student_ids:
+                if selected_scope and student_groups:
                     cur.execute('''
                         WITH selected_schedule AS (
-                            SELECT * FROM unnest(%s::uuid[], %s::uuid[])
-                                AS scope(schedule_id, course_id)
+                            SELECT * FROM unnest(%s::uuid[], %s::uuid[], %s::uuid[])
+                                AS scope(schedule_id, course_id, group_id)
                         )
-                        SELECT a.student_id, sc.course_id,
+                        SELECT sc.group_id, a.student_id, sc.course_id,
                                COUNT(DISTINCT a.schedule_id) AS attended_classes
                         FROM selected_schedule sc
                         JOIN attendance a ON a.schedule_id = sc.schedule_id
+                        JOIN students st ON st.id = a.student_id AND st.group_id = sc.group_id
                         WHERE a.student_id = ANY(%s::uuid[])
                           AND a.date BETWEEN %s AND %s AND a.mark = 1
-                        GROUP BY a.student_id, sc.course_id;
-                    ''', ([pair[0] for pair in selected_pairs], [pair[1] for pair in selected_pairs],
-                          student_ids, period_start, period_end))
+                        GROUP BY sc.group_id, a.student_id, sc.course_id;
+                    ''', ([item[0] for item in selected_scope], [item[1] for item in selected_scope],
+                          [item[2] for item in selected_scope], list(student_groups), period_start, period_end))
                     attendance = {
-                        (str(row['student_id']), str(row['course_id'])): row['attended_classes']
+                        (str(row['group_id']), str(row['student_id']), str(row['course_id'])): row['attended_classes']
                         for row in cur.fetchall()
                     }
 
-    # Студенты без посещений тоже должны попасть в отчёт.
-    profiles = get_student_profiles(student_ids, group_id)
-
-    # Ищем подразделения по кафедре группы.
+    profiles = get_student_profiles(student_groups)
+    department_ids = sorted({group.department_id for group in groups.values()})
+    hierarchy = {}
     try:
         with MongoClient(
             host=MONGO_HOST, port=int(MONGO_PORT), username=MONGO_USER,
             password=MONGO_PASS, authSource='admin', serverSelectionTimeoutMS=3000,
         ) as client:
-            # В документе вуза выбираем кафедру группы и её институт.
             documents = client[MONGO_DB]['university_hierarchy'].find(
-                {'institutes.departments.department_id': group.department_id},
+                {'institutes.departments.department_id': {'$in': department_ids}},
                 {'_id': 0, 'university_id': 1, 'name': 1, 'institutes': 1},
             )
             for university in documents:
                 for institute in university.get('institutes', []):
                     for department in institute.get('departments', []):
-                        if department.get('department_id') == group.department_id:
-                            group.department_name = department.get('name')
-                            group.institute_id = institute.get('institute_id')
-                            group.institute_name = institute.get('name')
-                            group.university_id = university.get('university_id')
-                            group.university_name = university.get('name')
+                        if department.get('department_id') in department_ids:
+                            hierarchy[department['department_id']] = dict(
+                                department_name=department.get('name'),
+                                institute_id=institute.get('institute_id'), institute_name=institute.get('name'),
+                                university_id=university.get('university_id'), university_name=university.get('name'),
+                            )
     except Exception:
         raise HTTPException(status_code=503, detail='MongoDB недоступна')
-    if not all((group.department_name, group.institute_id, group.institute_name,
-                group.university_id, group.university_name)):
-        raise HTTPException(status_code=503, detail='Иерархия кафедры в MongoDB неполна')
+    for group in groups.values():
+        fields = hierarchy.get(group.department_id)
+        if not fields or not all(fields.values()):
+            raise HTTPException(status_code=503, detail='Иерархия кафедры в MongoDB неполна')
+        for name, value in fields.items():
+            setattr(group, name, value)
 
-    students = []
-    for student_id in student_ids:
-        course_hours = []
-        for course in course_rows:
-            course_id = str(course['course_id'])
-            planned = len(schedule_by_course[course_id])
-            attended = attendance.get((student_id, course_id), 0)
-            course_hours.append(CourseHoursDTO(
-                **{**dict(course), 'course_id': course_id,
-                   'speciality_id': str(course['speciality_id']), 'department_id': str(course['department_id'])},
-                planned_classes=planned, attended_classes=attended,
-                planned_hours=planned * 2, attended_hours=attended * 2,
-            ))
-        students.append(StudentHoursDTO(**profiles[student_id], courses=course_hours))
-
-    return GroupHoursReportDTO(group=group, period_start=period_start, period_end=period_end, students=students)
+    reports = []
+    for group_id, group in groups.items():
+        students = []
+        for student_id in students_by_group[group_id]:
+            course_hours = []
+            for course in courses_by_group[group_id]:
+                course_id = str(course['course_id'])
+                planned = len(schedules_by_group[group_id][course_id])
+                attended = attendance.get((group_id, student_id, course_id), 0)
+                course_hours.append(CourseHoursDTO(
+                    **{**dict(course), 'course_id': course_id,
+                       'speciality_id': str(course['speciality_id']), 'department_id': str(course['department_id'])},
+                    planned_classes=planned, attended_classes=attended,
+                    planned_hours=planned * 2, attended_hours=attended * 2,
+                ))
+            students.append(StudentHoursDTO(**profiles[student_id], courses=course_hours))
+        reports.append(GroupHoursReportDTO(
+            group=group, period_start=period_start, period_end=period_end, students=students,
+        ))
+    return reports
