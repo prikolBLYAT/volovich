@@ -1,6 +1,7 @@
 import os
 import json
 from contextlib import closing
+from math import gcd
 from datetime import date, datetime, timedelta
 from typing import List, Optional
 from fastapi import FastAPI, HTTPException, Query, status
@@ -128,6 +129,64 @@ def get_es_client():
         )
 
 
+def percentage_rounding_corrections(totals):
+    # В точных половинах сохраняем прежний round Python, включая двоичную погрешность.
+    corrections = {}
+    for total in set(totals):
+        if total <= 0:
+            continue
+        step = total // gcd(total, 10000)
+        if step % 2:
+            continue
+        for attended in range(step // 2, total + 1, step):
+            hundredths, _ = divmod(attended * 10000, total)
+            exact = (hundredths + hundredths % 2) / 100
+            previous = round(attended / total * 100, 2)
+            if previous != exact:
+                corrections[f"{total}:{attended}"] = previous
+    return json.dumps(corrections)
+
+
+ATTENDANCE_REPORT_SQL = """
+WITH scoped_students AS (
+    SELECT * FROM unnest(%s::uuid[], %s::uuid[], %s::int[])
+        AS scope(student_id, group_id, total_classes)
+), scoped_schedules AS (
+    SELECT * FROM unnest(%s::uuid[], %s::uuid[]) AS scope(group_id, schedule_id)
+), attended AS (
+    SELECT ss.student_id, COUNT(DISTINCT a.schedule_id) AS attended_classes
+    FROM scoped_students ss
+    JOIN students st ON st.id = ss.student_id AND st.group_id = ss.group_id
+    JOIN scoped_schedules gs ON gs.group_id = ss.group_id
+    JOIN schedule sc ON sc.id = gs.schedule_id AND sc.group_id = ss.group_id
+    JOIN attendance a ON a.student_id = ss.student_id AND a.schedule_id = sc.id
+    WHERE a.date BETWEEN %s AND %s AND a.mark = 1
+    GROUP BY ss.student_id
+), counts AS (
+    SELECT ss.*, COALESCE(a.attended_classes, 0) AS attended_classes
+    FROM scoped_students ss LEFT JOIN attended a USING (student_id)
+    WHERE ss.total_classes > 0
+), percentages AS (
+    SELECT *, COALESCE((%s::jsonb ->> (total_classes::text || ':' || attended_classes::text))::numeric,
+        (div(attended_classes * 10000::numeric, total_classes) +
+        CASE WHEN mod(attended_classes * 10000::numeric, total_classes) * 2 > total_classes
+               OR (mod(attended_classes * 10000::numeric, total_classes) * 2 = total_classes
+                   AND mod(div(attended_classes * 10000::numeric, total_classes), 2) = 1)
+             THEN 1 ELSE 0 END) / 100) AS attendance_percentage
+    FROM counts
+), ranked AS (
+    SELECT * FROM percentages WHERE attendance_percentage BETWEEN %s AND %s
+    ORDER BY attendance_percentage ASC, total_classes DESC, student_id ASC
+    LIMIT %s
+)
+SELECT r.*, g.id AS metadata_group_id, g.department_id, g.name AS group_name,
+       sp.name AS speciality_name, sp.code AS speciality_code, sp.degree_level
+FROM ranked r
+LEFT JOIN (groups g JOIN specialities sp ON sp.id = g.speciality_id) ON g.id = r.group_id
+ORDER BY r.attendance_percentage ASC, r.total_classes DESC, r.student_id ASC
+"""
+
+
 # Отчёт о посещаемости лекций.
 
 @app.get(
@@ -187,6 +246,7 @@ def get_attendance_report(
 
     # По найденным лекциям ищем занятия за период, группы и студентов.
     student_schedules = {}
+    group_schedules = {}
     scheduled_lecture_ids = set()
     try:
         with neo4j_driver.session() as session:
@@ -214,6 +274,7 @@ def get_attendance_report(
                     "group_id": r["group_id"],
                     "schedule_ids": r["schedule_ids"]
                 }
+                group_schedules[r["group_id"]] = r["schedule_ids"]
                 for student_id in r["student_ids"]:
                     student_schedules[student_id] = group_scope
     except Exception as e:
@@ -229,54 +290,26 @@ def get_attendance_report(
             matching_lectures_count=len(scheduled_lecture_ids), students=[]
         )
 
-    # Передаём в PostgreSQL только студентов и занятия, найденные в графе.
+    # Передаём точные связи графа; занятия группы не размножаем по студентам.
     student_ids = list(student_schedules)
-    schedule_ids = list({
-        schedule_id
-        for student in student_schedules.values()
-        for schedule_id in student["schedule_ids"]
-    })
-    attendance_stats = {}
-    if schedule_ids:
-        attendance_sql = """
-        SELECT a.student_id, COUNT(DISTINCT a.schedule_id) AS attended_classes
-        FROM attendance a
-        JOIN schedule sc ON sc.id = a.schedule_id
-        JOIN students st ON st.id = a.student_id AND st.group_id = sc.group_id
-        WHERE a.schedule_id = ANY(%s::uuid[])
-          AND a.student_id = ANY(%s::uuid[])
-          AND a.date BETWEEN %s AND %s
-          AND a.mark = 1
-        GROUP BY a.student_id;
-        """
-        with closing(get_pg_conn()) as pg_conn:
-            with pg_conn.cursor(cursor_factory=RealDictCursor) as cur:
-                # Считаем занятия с отметкой 1 за период. Группа студента должна совпадать с группой занятия.
-                cur.execute(attendance_sql, (schedule_ids, student_ids, period_start, period_end))
-                attendance_stats = {
-                    str(row["student_id"]): row["attended_classes"]
-                    for row in cur.fetchall()
-                }
-
-    ranked_students = []
-    for student_id, scoped in student_schedules.items():
-        total_classes = len(scoped["schedule_ids"])
-        if not total_classes:
-            continue
-        attended_classes = attendance_stats.get(student_id, 0)
-        pct = round(attended_classes / total_classes * 100, 2)
-        if min_attendance_pct <= pct <= max_attendance_pct:
-            ranked_students.append({
-                "student_id": student_id,
-                "group_id": scoped["group_id"],
-                "total_classes": total_classes,
-                "attended_classes": attended_classes,
-                "attendance_percentage": pct
-            })
-    ranked_students.sort(key=lambda item: (
-        item["attendance_percentage"], -item["total_classes"], item["student_id"]
-    ))
-    ranked_students = ranked_students[:limit]
+    schedule_groups = []
+    schedule_ids = []
+    for group_id, ids in group_schedules.items():
+        schedule_groups.extend([group_id] * len(ids))
+        schedule_ids.extend(ids)
+    params = (
+        student_ids,
+        [student_schedules[s]["group_id"] for s in student_ids],
+        [len(student_schedules[s]["schedule_ids"]) for s in student_ids],
+        schedule_groups, schedule_ids, period_start, period_end,
+        percentage_rounding_corrections(len(ids) for ids in group_schedules.values()),
+        min_attendance_pct, max_attendance_pct, limit
+    )
+    with closing(get_pg_conn()) as pg_conn:
+        with pg_conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(ATTENDANCE_REPORT_SQL, params)
+            ranked_students = [dict(row, student_id=str(row["student_id"]),
+                                    group_id=str(row["group_id"])) for row in cur.fetchall()]
 
     if not ranked_students:
         return ReportResponseDTO(
@@ -284,26 +317,8 @@ def get_attendance_report(
             min_attendance_pct=min_attendance_pct, max_attendance_pct=max_attendance_pct,
             matching_lectures_count=len(scheduled_lecture_ids), students=[]
         )
-
-    # После отбора по посещаемости получаем названия групп.
-    result_group_ids = sorted({item["group_id"] for item in ranked_students})
-    group_sql = """
-    SELECT
-        g.id AS group_id,
-        g.department_id,
-        g.name AS group_name,
-        sp.name AS speciality_name,
-        sp.code AS speciality_code,
-        sp.degree_level
-    FROM groups g
-    JOIN specialities sp ON sp.id = g.speciality_id
-    WHERE g.id = ANY(%s::uuid[]);
-    """
-    with closing(get_pg_conn()) as pg_conn:
-        with pg_conn.cursor(cursor_factory=RealDictCursor) as cur:
-            # Читаем группы итогового списка и их специальности. От кафедры здесь только UUID.
-            cur.execute(group_sql, (result_group_ids,))
-            group_rows = cur.fetchall()
+    # Нет метаданных — пропускаем после LIMIT, не подменяем следующим студентом.
+    group_rows = [row for row in ranked_students if row["metadata_group_id"] is not None]
 
     # Пробуем взять сведения о студентах из кэша.
     top_student_ids = [item["student_id"] for item in ranked_students]

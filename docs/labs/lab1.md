@@ -14,9 +14,7 @@
 Gateway: JWT и параметры
   → Elasticsearch: подходящие lecture_id
   → Neo4j: группы, студенты и назначенные занятия
-  → PostgreSQL: число посещений
-  → Python: процент, сортировка, limit
-  → PostgreSQL: атрибуты итоговых групп
+  → PostgreSQL: один SQL — посещения, процент, фильтр, сортировка, limit и атрибуты итоговых групп
   → Redis: профили итоговых студентов
       → при промахах PostgreSQL → Redis
   → MongoDB: кафедры, институты и вузы
@@ -172,118 +170,88 @@ student_schedules[student_id] = {
 
 **Важно:** в этом запросе нет проверки кафедры или специальности курса относительно группы. Это не фильтр «курсы своей кафедры» из третьей лабы. Принадлежность занятия группе определяется графовой связью `HAS_SCHEDULE`.
 
-## 5. Запрос №3. PostgreSQL: агрегат посещений
+## 5. Запрос №3. PostgreSQL: посещения, рейтинг и данные групп
 
-Сначала формируются два общих списка:
-
-- `student_ids` — все студенты графовой выборки;
-- `schedule_ids` — объединение уникальных занятий всех этих групп.
+Теперь это один SQL и одно подключение, а не отдельные запросы посещений и групп. Формат ответа не меняется.
 
 ```sql
-SELECT a.student_id, COUNT(DISTINCT a.schedule_id) AS attended_classes
-FROM attendance a
-JOIN schedule sc ON sc.id = a.schedule_id
-JOIN students st ON st.id = a.student_id AND st.group_id = sc.group_id
-WHERE a.schedule_id = ANY(%s::uuid[])
-  AND a.student_id = ANY(%s::uuid[])
-  AND a.date BETWEEN %s AND %s
-  AND a.mark = 1
-GROUP BY a.student_id;
+WITH scoped_students AS (
+    SELECT * FROM unnest(%s::uuid[], %s::uuid[], %s::int[])
+        AS scope(student_id, group_id, total_classes)
+), scoped_schedules AS (
+    SELECT * FROM unnest(%s::uuid[], %s::uuid[]) AS scope(group_id, schedule_id)
+), attended AS (
+    SELECT ss.student_id, COUNT(DISTINCT a.schedule_id) AS attended_classes
+    FROM scoped_students ss
+    JOIN students st ON st.id = ss.student_id AND st.group_id = ss.group_id
+    JOIN scoped_schedules gs ON gs.group_id = ss.group_id
+    JOIN schedule sc ON sc.id = gs.schedule_id AND sc.group_id = ss.group_id
+    JOIN attendance a ON a.student_id = ss.student_id AND a.schedule_id = sc.id
+    WHERE a.date BETWEEN %s AND %s AND a.mark = 1
+    GROUP BY ss.student_id
+), counts AS (
+    SELECT ss.*, COALESCE(a.attended_classes, 0) AS attended_classes
+    FROM scoped_students ss LEFT JOIN attended a USING (student_id)
+    WHERE ss.total_classes > 0
+), percentages AS (
+    SELECT *, COALESCE((%s::jsonb ->> (total_classes::text || ':' || attended_classes::text))::numeric,
+        (div(attended_classes * 10000::numeric, total_classes) +
+        CASE WHEN mod(attended_classes * 10000::numeric, total_classes) * 2 > total_classes
+               OR (mod(attended_classes * 10000::numeric, total_classes) * 2 = total_classes
+                   AND mod(div(attended_classes * 10000::numeric, total_classes), 2) = 1)
+             THEN 1 ELSE 0 END) / 100) AS attendance_percentage
+    FROM counts
+), ranked AS (
+    SELECT * FROM percentages WHERE attendance_percentage BETWEEN %s AND %s
+    ORDER BY attendance_percentage ASC, total_classes DESC, student_id ASC
+    LIMIT %s
+)
+SELECT r.*, g.id AS metadata_group_id, g.department_id, g.name AS group_name,
+       sp.name AS speciality_name, sp.code AS speciality_code, sp.degree_level
+FROM ranked r
+LEFT JOIN (groups g JOIN specialities sp ON sp.id = g.speciality_id) ON g.id = r.group_id
+ORDER BY r.attendance_percentage ASC, r.total_classes DESC, r.student_id ASC
 ```
 
-### Параметры psycopg2 по порядку
+### Параметры по порядку
 
-```python
-(schedule_ids, student_ids, period_start, period_end)
-```
+1. Массив UUID студентов из Neo4j.
+2. Соответствующие UUID их групп.
+3. Число плановых занятий для каждого студента.
+4. UUID групп расписания.
+5. Соответствующие UUID занятий.
+6. Начало периода.
+7. Конец периода.
+8. JSON поправок округления, описанных ниже.
+9. Минимальный процент.
+10. Максимальный процент.
+11. Лимит студентов.
 
-`ANY(%s::uuid[])` проверяет принадлежность UUID переданному массиву. Значения передаются драйверу отдельно от SQL, а не вставляются в текст строковой конкатенацией.
+Все значения передаются через параметры драйвера. Первые три массива раскрываются по одинаковым позициям, как и отдельная пара массивов группы/занятия. Список занятий группы не размножается по каждому её студенту.
 
-### Условия и соединения
+### Этапы SQL
 
-- `a.schedule_id = ANY(...)` ограничивает отметки нужными занятиями.
-- `a.student_id = ANY(...)` ограничивает их нужными студентами.
-- `a.date BETWEEN ...` проверяет дату отметки и позволяет PostgreSQL учитывать диапазон партиций `attendance` при построении плана. Конкретный способ доступа зависит от плана.
-- `a.mark = 1` оставляет присутствия. Нули не считаются посещениями.
-- Соединение с `schedule` даёт группу конкретного занятия.
-- Соединение с `students` требует, чтобы группа студента совпала с группой этого занятия в PostgreSQL. Это важно, потому что входные массивы объединены по нескольким группам.
+- `scoped_students` задаёт точные тройки студент/группа/план из графа.
+- `scoped_schedules` задаёт точные пары группа/занятие из графа.
+- `attended` проверяет принадлежность студента и занятия группе в PG, ограничивает даты включительно, оставляет `mark=1` и считает `COUNT(DISTINCT a.schedule_id)`. Дубли отметок не увеличивают результат.
+- `counts` через LEFT JOIN сохраняет студентов без присутствий с нулём. Нулевой план исключается.
+- `percentages` вычисляет округлённый процент посещений.
+- `ranked` применяет включительный диапазон уже округлённых процентов, сортирует по проценту возрастанию, плановым занятиям убыванию и UUID студента возрастанию. Затем применяет `LIMIT`.
+- Только после ограничения списка присоединяются группа и специальность. Отсутствующие метаданные не заменяются следующими студентами рейтинга: соответствующий студент будет пропущен при сборке ответа, как прежде.
 
-### Что возвращается
+### Округление
 
-| Поле | Смысл |
-|---|---|
-| `student_id` | UUID студента |
-| `attended_classes` | Число уникальных посещённых занятий из выбранного расписания |
+В SQL используется округление точной половины к чётному. Для совместимости с прежним `round(attended / total * 100, 2)` Python заранее строит небольшой JSON поправок для тех точных половин, где двоичная арифметика даёт другое значение. Рассматриваются только уникальные размеры плана, а не отдельный расчёт на каждого студента. Например, для 23 посещений из 160 сохраняется прежнее 14.37, а не 14.38. Поправки передаются параметром; дополнительного SQL нет.
 
-`COUNT(DISTINCT a.schedule_id)` не даёт нескольким отметкам одного занятия увеличить результат. Студенты без присутствий не возвращаются SQL-агрегатом; Python позже подставляет им ноль через `attendance_stats.get(student_id, 0)`.
+### Результат
 
-Имена, телефоны и названия групп этот запрос не читает.
+Одна строка на итогового студента: `student_id`, `group_id`, `total_classes`, `attended_classes`, `attendance_percentage`, `metadata_group_id`, `department_id`, `group_name`, `speciality_name`, `speciality_code`, `degree_level`.
 
-## 6. Расчёт и отбор в Python — без запроса в БД
+`metadata_group_id` — служебный признак наличия группы и специальности, в публичный JSON не входит. Строки с метаданными формируют `group_rows`; все строки рейтинга — `ranked_students`. Группа ответа по-прежнему определяется графом и метаданными PG, а не кэшированным профилем.
 
-Для каждого студента:
+Если рейтинг пуст, сразу возвращается пустой отчёт без Redis и MongoDB. Данные профилей этот SQL не читает.
 
-```python
-total_classes = len(student_schedules[student_id]['schedule_ids'])
-attended_classes = attendance_stats.get(student_id, 0)
-pct = round(attended_classes / total_classes * 100, 2)
-```
-
-Знаменатель — занятия подходящих лекций, назначенные группе за период. Это не все занятия курса и не все найденные текстовые материалы. При нулевом знаменателе студент пропускается.
-
-Фильтр по проценту включительный:
-
-```python
-min_attendance_pct <= pct <= max_attendance_pct
-```
-
-Он применяется к уже округлённому значению. Сортировка:
-
-1. меньший `attendance_percentage` выше;
-2. при равенстве большее `total_classes` выше;
-3. затем UUID студента по возрастанию для устойчивого порядка.
-
-После сортировки берётся `[:limit]`. Если список пуст, дальнейшее чтение атрибутов и профилей прекращается.
-
-Это ключевая граница: сведения для оформления отчёта читаются только после определения итоговых студентов.
-
-## 7. Запрос №4. PostgreSQL: данные итоговых групп
-
-`result_group_ids` — отсортированные уникальные `group_id` из уже ограниченного списка студентов.
-
-```sql
-SELECT
-    g.id AS group_id,
-    g.department_id,
-    g.name AS group_name,
-    sp.name AS speciality_name,
-    sp.code AS speciality_code,
-    sp.degree_level
-FROM groups g
-JOIN specialities sp ON sp.id = g.speciality_id
-WHERE g.id = ANY(%s::uuid[]);
-```
-
-Параметры:
-
-```python
-(result_group_ids,)
-```
-
-### Возвращаемые поля
-
-- `group_id` — UUID группы, по нему результат соединяется со статистикой из графа;
-- `department_id` — UUID кафедры для последующего MongoDB find;
-- `group_name` — название группы;
-- `speciality_name` — название специальности;
-- `speciality_code` — её код;
-- `degree_level` — уровень образования.
-
-`JOIN specialities` — обычный внутренний JOIN по `g.speciality_id`. Таблиц кафедр, институтов и вузов здесь нет.
-
-Набор `group_rows` позже превращается в словарь `groups_by_id`. Группа ответа определяется статистикой из Neo4j и этой строкой PG, а не `group_id` из кэшированного профиля студента.
-
-## 8. Запрос №5. Redis: профили итоговых студентов
+## 6. Запрос №4. Redis: профили итоговых студентов
 
 ```python
 top_student_ids = [item['student_id'] for item in ranked_students]
@@ -309,7 +277,7 @@ student_card_number, status
 
 Проверка здесь слабее, чем в третьей лабе: не сверяется `profile['student_id']` с ключом и не требуется совпадение `profile['group_id']` с графом. Для финальной принадлежности к группе используется граф, однако остальные поля профиля могут оставаться устаревшими до истечения срока кэша. Наличие ключей также не является полной проверкой типов и содержимого значений.
 
-## 9. Условный запрос №6. PostgreSQL: недостающие профили
+## 7. Условный запрос №5. PostgreSQL: недостающие профили
 
 Выполняется только при наличии `missing_student_ids`:
 
@@ -332,7 +300,7 @@ WHERE id = ANY(%s::uuid[]);
 
 Если нужной строки студента в PG не оказалось, эта лаба не выдаёт отдельную 503 из-за неполного состава: при окончательной сборке студент без профиля будет пропущен. Новый студент взамен не добирается, поэтому ответ может оказаться короче `limit`.
 
-## 10. Условные записи №7. Redis: заполнение кэша
+## 8. Условные записи №6. Redis: заполнение кэша
 
 Для каждого прочитанного из PostgreSQL профиля:
 
@@ -354,7 +322,7 @@ SETEX <UUID студента> 86400 <JSON профиля>
 
 Автоматической инвалидации при изменении студента в PostgreSQL нет.
 
-## 11. Запрос №8. MongoDB: иерархия итоговых групп
+## 9. Запрос №7. MongoDB: иерархия итоговых групп
 
 `target_department_ids` берутся из `department_id` строк `group_rows`.
 
@@ -391,7 +359,7 @@ department_hierarchy[department_id] = {
 
 Нужная кафедра должна присутствовать, и все три названия должны быть заполнены. Иначе 503. К одному документу вуза могут относиться несколько итоговых групп, но отдельный find на каждую группу не выполняется.
 
-## 12. Сборка ответа
+## 10. Сборка ответа
 
 Сопоставляются три независимых набора:
 
@@ -419,7 +387,7 @@ total_classes, attended_classes, attendance_percentage
 
 `limit` не возвращается отдельным полем верхнего уровня.
 
-## 13. Сколько обращений выполняется
+## 11. Сколько обращений выполняется
 
 Речь о вызовах прикладного кода; установка соединения, служебные команды драйвера и MongoDB getMore сюда не включены.
 
@@ -428,12 +396,12 @@ total_classes, attended_classes, attendance_percentage
 | Нет совпадений ES | Один `search` |
 | ES нашёл материалы, граф не дал студентов | `search` + один Cypher |
 | Никто не прошёл диапазон посещаемости | ES + Neo4j + SQL посещений |
-| Непустой ответ, профили в кэше | ES + Neo4j + два SQL + MGET + MongoDB find |
+| Непустой ответ, профили в кэше | ES + Neo4j + один основной SQL + MGET + MongoDB find |
 | Непустой ответ, есть промахи | То же + один SQL профилей + по одному SETEX на прочитанный профиль |
 
-Два обычных SQL выполняются на двух свежих PG-подключениях. При промахах добавляется третье. Neo4j driver и Redis client созданы на уровне модуля; у Neo4j задан пул до 50 соединений. Это не означает, что PostgreSQL тоже использует пул: `get_pg_conn()` каждый раз вызывает `psycopg2.connect()`.
+Основной SQL выполняется на одном свежем PG-подключении. При промахах Redis добавляется второе подключение и один пакетный SQL профилей. Сокращение числа запросов не равнозначно ускорению: в коротком живом сравнении выигрыш по времени не подтверждён. Neo4j driver и Redis client созданы на уровне модуля; у Neo4j задан пул до 50 соединений. Это не означает, что PostgreSQL тоже использует пул: `get_pg_conn()` каждый раз вызывает `psycopg2.connect()`.
 
-## 14. Ошибки и ограничения
+## 12. Ошибки и ограничения
 
 - Ошибки ES, Neo4j и MongoDB в соответствующих блоках превращаются в 503. Ошибка подключения PG также превращается в 503.
 - Ошибки выполнения SQL и последующей обработки не везде перехватываются. Нельзя считать, что любая ошибка любой БД обязательно вернётся как 503.
