@@ -129,26 +129,18 @@ def get_es_client():
 
 
 ATTENDANCE_REPORT_SQL = """
-SELECT r.*, g.id AS metadata_group_id, g.department_id, g.name AS group_name,
-       sp.name AS speciality_name, sp.code AS speciality_code, sp.degree_level
-FROM (
-    SELECT s.student_id, s.group_id, s.total_classes,
-           COUNT(DISTINCT a.schedule_id) AS attended_classes,
-           ROUND(100.0 * COUNT(DISTINCT a.schedule_id) / s.total_classes, 2) AS attendance_percentage
-    FROM unnest(%s::uuid[], %s::uuid[], %s::int[]) AS s(student_id, group_id, total_classes)
-    LEFT JOIN (unnest(%s::uuid[], %s::uuid[]) AS gs(group_id, schedule_id)
-               JOIN schedule sc ON sc.id = gs.schedule_id AND sc.group_id = gs.group_id)
-           ON gs.group_id = s.group_id
-    LEFT JOIN students st ON st.id = s.student_id AND st.group_id = s.group_id
-    LEFT JOIN attendance a ON a.student_id = st.id AND a.schedule_id = sc.id
-                          AND a.date BETWEEN %s AND %s AND a.mark = 1
-    WHERE s.total_classes > 0
-    GROUP BY s.student_id, s.group_id, s.total_classes
-    HAVING ROUND(100.0 * COUNT(DISTINCT a.schedule_id) / s.total_classes, 2) BETWEEN %s AND %s
-    ORDER BY attendance_percentage, total_classes DESC, student_id LIMIT %s
-) r
-LEFT JOIN (groups g JOIN specialities sp ON sp.id = g.speciality_id) ON g.id = r.group_id
-ORDER BY r.attendance_percentage, r.total_classes DESC, r.student_id
+SELECT a.student_id, COUNT(DISTINCT a.schedule_id) AS total_classes,
+       COUNT(DISTINCT a.schedule_id) FILTER (WHERE a.mark = 1) AS attended_classes,
+       ROUND(100.0 * COUNT(DISTINCT a.schedule_id) FILTER (WHERE a.mark = 1)
+             / COUNT(DISTINCT a.schedule_id), 2) AS attendance_percentage
+FROM attendance a
+WHERE a.date BETWEEN %s AND %s
+  AND a.schedule_id = ANY(%s::uuid[]) AND a.student_id = ANY(%s::uuid[])
+GROUP BY a.student_id
+HAVING ROUND(100.0 * COUNT(DISTINCT a.schedule_id) FILTER (WHERE a.mark = 1)
+             / COUNT(DISTINCT a.schedule_id), 2) BETWEEN %s AND %s
+ORDER BY attendance_percentage, total_classes DESC, a.student_id
+LIMIT %s
 """
 
 
@@ -255,25 +247,16 @@ def get_attendance_report(
             matching_lectures_count=len(scheduled_lecture_ids), students=[]
         )
 
-    # Передаём точные связи графа; занятия группы не размножаем по студентам.
+    # Граф задаёт область поиска, PostgreSQL считает журнал и возвращает только топ.
     student_ids = list(student_schedules)
-    schedule_groups = []
-    schedule_ids = []
-    for group_id, ids in group_schedules.items():
-        schedule_groups.extend([group_id] * len(ids))
-        schedule_ids.extend(ids)
-    params = (
-        student_ids,
-        [student_schedules[s]["group_id"] for s in student_ids],
-        [len(student_schedules[s]["schedule_ids"]) for s in student_ids],
-        schedule_groups, schedule_ids, period_start, period_end,
-        min_attendance_pct, max_attendance_pct, limit
-    )
+    schedule_ids = sorted({sid for ids in group_schedules.values() for sid in ids})
+    params = (period_start, period_end, schedule_ids, student_ids,
+              min_attendance_pct, max_attendance_pct, limit)
     with closing(get_pg_conn()) as pg_conn:
         with pg_conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(ATTENDANCE_REPORT_SQL, params)
             ranked_students = [dict(row, student_id=str(row["student_id"]),
-                                    group_id=str(row["group_id"])) for row in cur.fetchall()]
+                                    group_id=student_schedules[str(row["student_id"])]["group_id"]) for row in cur.fetchall()]
 
     if not ranked_students:
         return ReportResponseDTO(
@@ -281,9 +264,6 @@ def get_attendance_report(
             min_attendance_pct=min_attendance_pct, max_attendance_pct=max_attendance_pct,
             matching_lectures_count=len(scheduled_lecture_ids), students=[]
         )
-    # Нет метаданных — пропускаем после LIMIT, не подменяем следующим студентом.
-    group_rows = [row for row in ranked_students if row["metadata_group_id"] is not None]
-
     # Пробуем взять сведения о студентах из кэша.
     top_student_ids = [item["student_id"] for item in ranked_students]
     student_profiles = {}
@@ -295,10 +275,13 @@ def get_attendance_report(
                 try:
                     profile = json.loads(cached_profile)
                     required_fields = {
-                        "group_id", "first_name", "second_name", "email", "phone",
-                        "student_card_number", "status"
+                        "student_id", "group_id", "first_name", "second_name", "email", "phone",
+                        "student_card_number", "status", "department_id", "group_name",
+                        "speciality_name", "speciality_code", "degree_level"
                     }
-                    if isinstance(profile, dict) and required_fields.issubset(profile):
+                    if (isinstance(profile, dict) and required_fields.issubset(profile)
+                            and profile["student_id"] == student_id
+                            and profile["group_id"] == student_schedules[student_id]["group_id"]):
                         student_profiles[student_id] = profile
                 except (TypeError, json.JSONDecodeError):
                     pass
@@ -308,27 +291,26 @@ def get_attendance_report(
     missing_student_ids = [student_id for student_id in top_student_ids if student_id not in student_profiles]
     if missing_student_ids:
         pg_sql = """
-        SELECT id AS student_id, group_id, first_name, second_name,
-               email, phone, student_card_number, status
-        FROM students
-        WHERE id = ANY(%s::uuid[]);
+        SELECT st.id AS student_id, st.group_id, st.first_name, st.second_name,
+               st.email, st.phone, st.student_card_number, st.status,
+               g.department_id, g.name AS group_name,
+               sp.name AS speciality_name, sp.code AS speciality_code, sp.degree_level
+        FROM students st
+        JOIN groups g ON g.id = st.group_id
+        JOIN specialities sp ON sp.id = g.speciality_id
+        WHERE (st.id, st.group_id) IN (SELECT * FROM unnest(%s::uuid[], %s::uuid[]));
         """
         with closing(get_pg_conn()) as pg_conn:
             with pg_conn.cursor(cursor_factory=RealDictCursor) as cur:
                 # То, чего нет в кэше, читаем из PostgreSQL одним запросом.
-                cur.execute(pg_sql, (missing_student_ids,))
+                cur.execute(pg_sql, (missing_student_ids,
+                                     [student_schedules[sid]["group_id"] for sid in missing_student_ids]))
                 for row in cur.fetchall():
                     student_id = str(row["student_id"])
-                    profile = {
-                        "student_id": student_id,
-                        "group_id": str(row["group_id"]),
-                        "first_name": row["first_name"],
-                        "second_name": row["second_name"],
-                        "email": row["email"],
-                        "phone": row["phone"],
-                        "student_card_number": row["student_card_number"],
-                        "status": row["status"]
-                    }
+                    if str(row["group_id"]) != student_schedules[student_id]["group_id"]:
+                        continue
+                    profile = {**dict(row), "student_id": student_id,
+                               "group_id": str(row["group_id"]), "department_id": str(row["department_id"])}
                     student_profiles[student_id] = profile
                     try:
                         # Сохраняем сведения о студенте в кэше на сутки.
@@ -339,7 +321,7 @@ def get_attendance_report(
     # Получаем названия подразделений из MongoDB.
     department_hierarchy = {}
     target_department_ids = {
-        str(row["department_id"]) for row in group_rows
+        row["department_id"] for row in student_profiles.values()
     }
     mongo_uri = f"mongodb://{MONGO_USER}:{MONGO_PASS}@{MONGO_HOST}:{MONGO_PORT}/?authSource=admin"
     try:
@@ -371,11 +353,10 @@ def get_attendance_report(
 
     # Используем группу из графа: в кэше она могла устареть.
     students_res = []
-    groups_by_id = {str(row["group_id"]): row for row in group_rows}
     for stats in ranked_students:
         st_id = stats["student_id"]
         prof = student_profiles.get(st_id)
-        group = groups_by_id.get(stats["group_id"])
+        group = prof
         if prof and group:
             hierarchy = department_hierarchy.get(str(group["department_id"]), {})
             students_res.append(FullStudentInfoDTO(

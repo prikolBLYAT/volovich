@@ -14,8 +14,8 @@
 Gateway: JWT и параметры
   → Elasticsearch: подходящие lecture_id
   → Neo4j: группы, студенты и назначенные занятия
-  → PostgreSQL: один SQL — посещения, процент, фильтр, сортировка, limit и атрибуты итоговых групп
-  → Redis: профили итоговых студентов
+  → PostgreSQL: один простой SQL — журнал посещений, процент, фильтр, сортировка и limit
+  → Redis: профили итоговых студентов с данными группы и специальности
       → при промахах PostgreSQL → Redis
   → MongoDB: кафедры, институты и вузы
   → JSON-ответ
@@ -170,70 +170,37 @@ student_schedules[student_id] = {
 
 **Важно:** в этом запросе нет проверки кафедры или специальности курса относительно группы. Это не фильтр «курсы своей кафедры» из третьей лабы. Принадлежность занятия группе определяется графовой связью `HAS_SCHEDULE`.
 
-## 5. Запрос №3. PostgreSQL: посещения, рейтинг и данные групп
+## 5. Запрос №3. PostgreSQL: простой агрегат журнала
 
-Теперь это один SQL и одно подключение, а не отдельные запросы посещений и групп. Формат ответа не меняется.
+Основной SQL читает только `attendance`. Нет JOIN, CTE, `unnest` или JSON-параметров:
 
 ```sql
-SELECT r.*, g.id AS metadata_group_id, g.department_id, g.name AS group_name,
-       sp.name AS speciality_name, sp.code AS speciality_code, sp.degree_level
-FROM (
-    SELECT s.student_id, s.group_id, s.total_classes,
-           COUNT(DISTINCT a.schedule_id) AS attended_classes,
-           ROUND(100.0 * COUNT(DISTINCT a.schedule_id) / s.total_classes, 2) AS attendance_percentage
-    FROM unnest(%s::uuid[], %s::uuid[], %s::int[]) AS s(student_id, group_id, total_classes)
-    LEFT JOIN (unnest(%s::uuid[], %s::uuid[]) AS gs(group_id, schedule_id)
-               JOIN schedule sc ON sc.id = gs.schedule_id AND sc.group_id = gs.group_id)
-           ON gs.group_id = s.group_id
-    LEFT JOIN students st ON st.id = s.student_id AND st.group_id = s.group_id
-    LEFT JOIN attendance a ON a.student_id = st.id AND a.schedule_id = sc.id
-                          AND a.date BETWEEN %s AND %s AND a.mark = 1
-    WHERE s.total_classes > 0
-    GROUP BY s.student_id, s.group_id, s.total_classes
-    HAVING ROUND(100.0 * COUNT(DISTINCT a.schedule_id) / s.total_classes, 2) BETWEEN %s AND %s
-    ORDER BY attendance_percentage, total_classes DESC, student_id LIMIT %s
-) r
-LEFT JOIN (groups g JOIN specialities sp ON sp.id = g.speciality_id) ON g.id = r.group_id
-ORDER BY r.attendance_percentage, r.total_classes DESC, r.student_id
+SELECT a.student_id, COUNT(DISTINCT a.schedule_id) AS total_classes,
+       COUNT(DISTINCT a.schedule_id) FILTER (WHERE a.mark = 1) AS attended_classes,
+       ROUND(100.0 * COUNT(DISTINCT a.schedule_id) FILTER (WHERE a.mark = 1)
+             / COUNT(DISTINCT a.schedule_id), 2) AS attendance_percentage
+FROM attendance a
+WHERE a.date BETWEEN %s AND %s
+  AND a.schedule_id = ANY(%s::uuid[]) AND a.student_id = ANY(%s::uuid[])
+GROUP BY a.student_id
+HAVING ROUND(100.0 * COUNT(DISTINCT a.schedule_id) FILTER (WHERE a.mark = 1)
+             / COUNT(DISTINCT a.schedule_id), 2) BETWEEN %s AND %s
+ORDER BY attendance_percentage, total_classes DESC, a.student_id
+LIMIT %s
 ```
 
-### Параметры по порядку
+Параметры по порядку: `period_start`, `period_end`, уникальные `schedule_ids` из Neo4j, `student_ids` из Neo4j, `min_attendance_pct`, `max_attendance_pct`, `limit`.
 
-1. Массив UUID студентов из Neo4j.
-2. Соответствующие UUID их групп.
-3. Число плановых занятий для каждого студента.
-4. UUID групп расписания.
-5. Соответствующие UUID занятий.
-6. Начало периода.
-7. Конец периода.
-8. Минимальный процент.
-9. Максимальный процент.
-10. Лимит студентов.
+- Дата проверяется включительно и ограничивает область партиций.
+- `schedule_id = ANY(...)` оставляет только отобранные графом занятия, `student_id = ANY(...)` — студентов графа.
+- План — число уникальных занятий, для которых в журнале есть запись, независимо от `mark`. Посещения — число этих занятий с `mark=1`. `DISTINCT` не даёт дублям отметок умножить занятия.
+- Студент с записями о пропусках остаётся с нулём присутствий. Студент вообще без строк журнала не появляется.
+- `HAVING` сохраняет прежний входной фильтр по проценту. Сортировка и `LIMIT` выполняются на сервере, приложение получает только итоговый топ.
+- Округление — стандартный PostgreSQL `ROUND(..., 2)`: точная половина от нуля.
 
-Все значения передаются через параметры драйвера. Первые три массива раскрываются по одинаковым позициям, как и отдельная пара массивов группы/занятия. Список занятий группы не размножается по каждому её студенту.
+**Отличие от прежнего расчёта:** знаменатель теперь берётся из журнала, не из длины расписания графа. Для корректного полного плана нужна запись посещаемости на каждую пару студент/занятие, в том числе `mark=0` при пропуске. Наш генератор создаёт такие записи. При неполном журнале процент может быть завышен. Граф задаёт область ID; повторной SQL-проверки связей через `schedule` и `students` в этом запросе нет.
 
-### Как читается запрос
-
-CTE, JSON-поправок и вспомогательной функции округления больше нет.
-
-1. `unnest` раскрывает студентов с их группой и числом плановых занятий.
-2. Пары группа/занятие связываются с расписанием PostgreSQL. Проверяется принадлежность студента группе.
-3. `LEFT JOIN attendance` оставляет только отметки нужных занятий за период, где `mark=1`; отсутствие присутствий сохраняет студента с нулём.
-4. `GROUP BY` и `COUNT(DISTINCT a.schedule_id)` считают уникальные посещённые занятия. Нулевой план исключается.
-5. `HAVING ROUND(...) BETWEEN ...` отбирает студентов по проценту; `ORDER BY` и `LIMIT` возвращают только итоговый топ.
-6. Снаружи к итоговому топу присоединяются группа и специальность. Отсутствующие метаданные не заменяются следующими студентами.
-
-### Округление
-
-Используется стандартный PostgreSQL `ROUND(..., 2)`, без воспроизведения особенностей Python. Точная половина округляется от нуля: 1 посещение из 32 даёт 3.13, 23 из 160 — 14.38. Это осознанное отличие от прежнего Python `round`, где получались 3.12 и 14.37; на таких границах может измениться попадание в диапазон или порядок рейтинга.
-
-### Результат
-
-Одна строка на итогового студента: `student_id`, `group_id`, `total_classes`, `attended_classes`, `attendance_percentage`, `metadata_group_id`, `department_id`, `group_name`, `speciality_name`, `speciality_code`, `degree_level`.
-
-`metadata_group_id` — служебный признак наличия группы и специальности, в публичный JSON не входит. Строки с метаданными формируют `group_rows`; все строки рейтинга — `ranked_students`. Группа ответа по-прежнему определяется графом и метаданными PG, а не кэшированным профилем.
-
-Если рейтинг пуст, сразу возвращается пустой отчёт без Redis и MongoDB. Данные профилей этот SQL не читает.
+Группа каждой строки рейтинга определяется словарём `student_schedules[student_id]` из Neo4j. Метаданные групп и специальностей основной SQL не читает. Если топ пуст, Redis и MongoDB не вызываются.
 
 ## 6. Запрос №4. Redis: профили итоговых студентов
 
@@ -253,34 +220,39 @@ MGET <UUID студента 1> <UUID студента 2> ...
 Код принимает кэш, если удалось разобрать JSON, получен словарь и в нём есть:
 
 ```text
-group_id, first_name, second_name, email, phone,
-student_card_number, status
+student_id, group_id, first_name, second_name, email, phone,
+student_card_number, status, department_id, group_name,
+speciality_name, speciality_code, degree_level
 ```
 
 Неразбираемый JSON или неполный объект считаются промахом. Ошибки чтения Redis подавляются, и профили запрашиваются из PostgreSQL.
 
-Проверка здесь слабее, чем в третьей лабе: не сверяется `profile['student_id']` с ключом и не требуется совпадение `profile['group_id']` с графом. Для финальной принадлежности к группе используется граф, однако остальные поля профиля могут оставаться устаревшими до истечения срока кэша. Наличие ключей также не является полной проверкой типов и содержимого значений.
+Дополнительно сверяются `student_id` с ключом и `group_id` с группой из Neo4j. Старая карточка без данных группы/специальности, другая группа или неверный UUID считаются промахом. Общие raw UUID-ключи и TTL не меняются; третья лаба принимает дополнительные поля, но при её обновлении короткой карточкой первая лаба снова получит промах. Метаданные могут устаревать в течение TTL, автоматической инвалидации нет.
 
 ## 7. Условный запрос №5. PostgreSQL: недостающие профили
 
 Выполняется только при наличии `missing_student_ids`:
 
 ```sql
-SELECT id AS student_id, group_id, first_name, second_name,
-       email, phone, student_card_number, status
-FROM students
-WHERE id = ANY(%s::uuid[]);
+SELECT st.id AS student_id, st.group_id, st.first_name, st.second_name,
+       st.email, st.phone, st.student_card_number, st.status,
+       g.department_id, g.name AS group_name,
+       sp.name AS speciality_name, sp.code AS speciality_code, sp.degree_level
+FROM students st
+JOIN groups g ON g.id = st.group_id
+JOIN specialities sp ON sp.id = g.speciality_id
+WHERE (st.id, st.group_id) IN (SELECT * FROM unnest(%s::uuid[], %s::uuid[]));
 ```
 
 Параметры:
 
 ```python
-(missing_student_ids,)
+(missing_student_ids, [student_schedules[sid]["group_id"] for sid in missing_student_ids])
 ```
 
 Возвращаются UUID студента и группы, имя, фамилия, почта, телефон, номер студенческого и статус. Все промахи читаются одним SQL-запросом, а не запросом на каждого человека. UUID преобразуются в строки для JSON и ключей Redis.
 
-Этот SQL не содержит фильтра группы. Принадлежность для отчёта уже определена предыдущими этапами.
+Этот условный SQL проверяет точные пары студент/группа из графа и возвращает профиль вместе с группой, специальностью и department_id. Это один пакетный запрос на все промахи. При прогретом кэше он не выполняется.
 
 Если нужной строки студента в PG не оказалось, эта лаба не выдаёт отдельную 503 из-за неполного состава: при окончательной сборке студент без профиля будет пропущен. Новый студент взамен не добирается, поэтому ответ может оказаться короче `limit`.
 
@@ -308,7 +280,7 @@ SETEX <UUID студента> 86400 <JSON профиля>
 
 ## 9. Запрос №7. MongoDB: иерархия итоговых групп
 
-`target_department_ids` берутся из `department_id` строк `group_rows`.
+`target_department_ids` берутся из расширенных карточек итоговых студентов в `student_profiles`.
 
 ```python
 mongo_client[MONGO_DB]['university_hierarchy'].find(
@@ -349,7 +321,7 @@ department_hierarchy[department_id] = {
 
 1. `ranked_students`: UUID, группа, число занятий, число посещений, процент;
 2. `student_profiles`: личные сведения из Redis/PG;
-3. `groups_by_id` и `department_hierarchy`: группа, специальность и названия подразделений.
+3. данные группы и специальности из карточки Redis/PG и названия подразделений из `department_hierarchy`.
 
 Верхний уровень:
 
@@ -389,7 +361,7 @@ total_classes, attended_classes, attendance_percentage
 
 - Ошибки ES, Neo4j и MongoDB в соответствующих блоках превращаются в 503. Ошибка подключения PG также превращается в 503.
 - Ошибки выполнения SQL и последующей обработки не везде перехватываются. Нельзя считать, что любая ошибка любой БД обязательно вернётся как 503.
-- Список занятий и принадлежность к группе приходят из Neo4j, а посещения и часть проверок группы — из PG. UUID и даты между хранилищами должны совпадать; общей межбазовой транзакции отчёта нет.
+- Список занятий и принадлежность к группе приходят из Neo4j, счётчики журнала — из PG, атрибуты — из расширенных карточек Redis/PG. UUID и даты между хранилищами должны совпадать; общей межбазовой транзакции отчёта нет.
 - Рейтинг строится по отобранным занятиям периода, не по учебному плану курса в целом.
 - Сетевой доступ напрямую к порту сервиса не защищается этим JWT-прокси: собственная JWT-проверка в `lab1.py` отсутствует. Это отдельный вопрос конфигурации сети.
 - Файл описывает запросы по исходникам. Новые обращения к живым БД и новый тестовый прогон для этой Markdown-документации не выполнялись.
