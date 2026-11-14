@@ -195,40 +195,18 @@ def get_hours_report(
     if period_start > period_end:
         raise HTTPException(status_code=400, detail='period_start не может быть позже period_end')
 
-    # Названия подразделений читаем только из MongoDB.
-    with closing(get_pg_conn()) as conn:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            query = '''
-                SELECT g.id AS group_id, g.name AS group_name, g.speciality_id, g.department_id,
-                       g.enrollment_year, g.curator, sp.name AS speciality_name,
-                       sp.code AS speciality_code, sp.degree_level, sp.duration
-                FROM groups g
-                JOIN specialities sp ON sp.id = g.speciality_id
-            '''
-            if group_name is not None:
-                query += ' WHERE g.name = %s'
-            cur.execute(query + ' ORDER BY g.id;', (group_name,) if group_name is not None else ())
-            group_rows = cur.fetchall()
-    groups = {
-        str(row['group_id']): GroupInfoDTO(**{
-            **dict(row), 'group_id': str(row['group_id']), 'department_name': None,
-            'department_id': str(row['department_id']), 'speciality_id': str(row['speciality_id']),
-        }) for row in group_rows
-    }
-    if not groups:
-        if group_name is not None:
-            raise HTTPException(status_code=404, detail='Группа с указанным названием не найдена')
-        return []
-
     # Собираем состав до расписания, чтобы студенты не размножали строки занятий.
     try:
         with GraphDatabase.driver(
             f'bolt://{NEO4J_HOST}:{NEO4J_BOLT_PORT}', auth=(NEO4J_USER, NEO4J_PASS),
         ) as driver:
             with driver.session() as session:
-                scopes = session.run('''
-                    MATCH (g:Group)
-                    WHERE g.id IN $group_ids
+                query = 'MATCH (g:Group)'
+                parameters = dict(period_start=str(period_start), period_end=str(period_end))
+                if group_name is not None:
+                    query += ' WHERE g.name = $group_name'
+                    parameters['group_name'] = group_name
+                scopes = session.run(query + '''
                     OPTIONAL MATCH (st:Student)-[:BELONGS_TO]->(g)
                     WITH g, collect(DISTINCT st.id) AS student_ids
                     OPTIONAL MATCH (g)-[:HAS_SCHEDULE]->(sc:Schedule)
@@ -239,37 +217,60 @@ def get_hours_report(
                     RETURN g.id AS group_id, student_ids,
                            collect(CASE WHEN course_id IS NULL THEN null
                            ELSE {course_id: course_id, schedule_ids: schedule_ids} END) AS courses
-                ''', group_ids=list(groups), period_start=str(period_start), period_end=str(period_end)).data()
+                ''', **parameters).data()
     except Exception:
         raise HTTPException(status_code=503, detail='Neo4j недоступен')
-    if {scope['group_id'] for scope in scopes} != set(groups):
-        raise HTTPException(status_code=503, detail='Группа отсутствует в Neo4j')
+    if not scopes:
+        if group_name is not None:
+            raise HTTPException(status_code=404, detail='Группа с указанным названием не найдена')
+        return []
+    group_ids = sorted({scope['group_id'] for scope in scopes})
 
-    students_by_group = {}
-    schedules_by_group = {}
-    student_groups = {}
-    for scope in scopes:
-        group_id = scope['group_id']
-        students_by_group[group_id] = sorted(set(scope['student_ids']))
-        schedules_by_group[group_id] = {
-            item['course_id']: sorted(set(item['schedule_ids'])) for item in scope['courses']
-        }
-        for student_id in students_by_group[group_id]:
-            if student_id in student_groups and student_groups[student_id] != group_id:
-                raise HTTPException(status_code=503, detail='Студент принадлежит нескольким группам в Neo4j')
-            student_groups[student_id] = group_id
-    student_groups = dict(sorted(student_groups.items()))
+    # Названия подразделений читаем только из MongoDB.
+    with closing(get_pg_conn()) as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute('''
+                SELECT g.id AS group_id, g.name AS group_name, g.speciality_id, g.department_id,
+                       g.enrollment_year, g.curator, sp.name AS speciality_name,
+                       sp.code AS speciality_code, sp.degree_level, sp.duration
+                FROM groups g
+                JOIN specialities sp ON sp.id = g.speciality_id
+                WHERE g.id = ANY(%s::uuid[])
+                ORDER BY g.id;
+            ''', (group_ids,))
+            group_rows = cur.fetchall()
+            groups = {
+                str(row['group_id']): GroupInfoDTO(**{
+                    **dict(row), 'group_id': str(row['group_id']), 'department_name': None,
+                    'department_id': str(row['department_id']), 'speciality_id': str(row['speciality_id']),
+                }) for row in group_rows
+            }
+            if set(groups) != set(group_ids):
+                raise HTTPException(status_code=503, detail='Группы в PostgreSQL и Neo4j не согласованы')
 
-    # Передаём точные пары, иначе курс чужой кафедры может попасть в другую группу.
-    candidate_pairs = sorted({
-        (course_id, groups[group_id].department_id)
-        for group_id, courses in schedules_by_group.items() for course_id in courses
-    })
-    courses_by_group = {group_id: [] for group_id in groups}
-    attendance = {}
-    if candidate_pairs:
-        with closing(get_pg_conn()) as conn:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            students_by_group = {}
+            schedules_by_group = {}
+            student_groups = {}
+            for scope in scopes:
+                group_id = scope['group_id']
+                students_by_group[group_id] = sorted(set(scope['student_ids']))
+                schedules_by_group[group_id] = {
+                    item['course_id']: sorted(set(item['schedule_ids'])) for item in scope['courses']
+                }
+                for student_id in students_by_group[group_id]:
+                    if student_id in student_groups and student_groups[student_id] != group_id:
+                        raise HTTPException(status_code=503, detail='Студент принадлежит нескольким группам в Neo4j')
+                    student_groups[student_id] = group_id
+            student_groups = dict(sorted(student_groups.items()))
+
+            # Передаём точные пары, иначе курс чужой кафедры может попасть в другую группу.
+            candidate_pairs = sorted({
+                (course_id, groups[group_id].department_id)
+                for group_id, courses in schedules_by_group.items() for course_id in courses
+            })
+            courses_by_group = {group_id: [] for group_id in groups}
+            attendance = {}
+            if candidate_pairs:
                 cur.execute('''
                     SELECT id AS course_id, speciality_id, department_id, name AS course_name,
                            description, semester, duration_hours, lecture_hours, practice_hours
@@ -310,7 +311,6 @@ def get_hours_report(
                         (str(row['group_id']), str(row['student_id']), str(row['course_id'])): row['attended_classes']
                         for row in cur.fetchall()
                     }
-
     profiles = get_student_profiles(student_groups)
     department_ids = sorted({group.department_id for group in groups.values()})
     hierarchy = {}

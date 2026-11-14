@@ -174,7 +174,7 @@ class ReportTests(unittest.TestCase):
         self.neo_run = session.run
         self.scope: dict = dict(group_id=GROUP, student_ids=[STUDENT], courses=[dict(course_id=COURSE, schedule_ids=[SCHEDULE])])
         self.scopes = [self.scope]
-        self.neo_run.return_value.data.side_effect = lambda: self.scopes
+        self.neo_run.return_value.data.side_effect = self.graph_data
         self.redis = self.start_patch('redis_client')
         self.redis.mget.side_effect = lambda ids: [json.dumps(profile(student_id)) for student_id in ids]
         self.mongo = self.start_patch('MongoClient')
@@ -190,10 +190,15 @@ class ReportTests(unittest.TestCase):
         self.addCleanup(patcher.stop)
         return result
 
+    def graph_data(self):
+        name = self.neo_run.call_args.kwargs.get('group_name')
+        matching = {row['group_id'] for row in self.groups if name is None or row['group_name'] == name}
+        return [scope for scope in self.scopes if name is None or scope['group_id'] in matching]
+
     def execute(self, sql, params=()):
         self.executed.append((sql, params))
         if 'FROM groups g' in sql:
-            self.cursor.fetchall.return_value = [row for row in self.groups if not params or row['group_name'] == params[0]]
+            self.cursor.fetchall.return_value = [row for row in self.groups if row['group_id'] in params[0]]
         elif 'FROM courses' in sql:
             self.cursor.fetchall.return_value = self.courses
         elif 'JOIN attendance' in sql:
@@ -205,6 +210,22 @@ class ReportTests(unittest.TestCase):
 
     def get(self, **overrides):
         return self.client.get(PATH, params={**self.params, **overrides})
+
+    def test_neo4j_runs_before_postgres_and_pg_reads_share_connection(self):
+        self.neo_run.side_effect = lambda *args, **kwargs: (
+            self.pg.assert_not_called() or self.neo_run.return_value)
+        response = self.get()
+        self.assertEqual(response.status_code, 200, response.text)
+        self.pg.assert_called_once()
+
+    def test_empty_graph_skips_every_other_database(self):
+        self.scopes = []
+        response = self.get()
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json(), [])
+        self.pg.assert_not_called()
+        self.redis.mget.assert_not_called()
+        self.mongo.assert_not_called()
 
     def test_schedule_duplicates_count_once_and_zero_attendance_is_retained(self):
         self.scope['courses'][0]['schedule_ids'] = [SCHEDULE2, SCHEDULE, SCHEDULE]
@@ -286,11 +307,11 @@ class ReportTests(unittest.TestCase):
         self.neo.driver.assert_not_called()
 
     def test_no_groups_returns_empty_list_before_other_services(self):
-        self.groups = []
+        self.scopes = []
         response = self.get()
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json(), [])
-        self.neo.driver.assert_not_called()
+        self.pg.assert_not_called()
         self.mongo.assert_not_called()
         self.redis.mget.assert_not_called()
 
@@ -299,8 +320,8 @@ class ReportTests(unittest.TestCase):
         self.assertEqual({item['name'] for item in parameters}, {'period_start', 'period_end', 'group_name'})
         self.assertEqual(self.get(group_id='not-a-uuid').status_code, 200)
 
-    def test_missing_neo_group_returns_503(self):
-        self.scopes = []
+    def test_missing_pg_group_returns_503(self):
+        self.groups = []
         self.assertEqual(self.get().status_code, 503)
 
     def test_neo_unavailable_returns_503(self):
@@ -337,7 +358,7 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(second['students'][0]['attendance'], [])
         self.assertEqual(len(self.executed), 3)
         self.neo_run.assert_called_once()
-        self.assertEqual(self.neo_run.call_args.kwargs['group_ids'], [GROUP, GROUP2])
+        self.assertNotIn('group_ids', self.neo_run.call_args.kwargs)
         self.redis.mget.assert_called_once_with([STUDENT, STUDENT2])
         self.collection.find.assert_called_once_with(
             {'institutes.departments.department_id': {'$in': [DEPT, DEPT2]}},
@@ -353,7 +374,7 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(len(response.json()), 2)
         self.assertEqual(len(self.executed), 4)
-        self.assertEqual(self.pg.call_count, 3)
+        self.assertEqual(self.pg.call_count, 2)
         self.neo_run.assert_called_once()
         self.redis.mget.assert_called_once_with([STUDENT, STUDENT2])
         self.redis.pipeline.assert_called_once_with(transaction=False)
@@ -400,9 +421,9 @@ class ReportTests(unittest.TestCase):
 
     def test_other_group_missing_neo_or_mongo_is_not_silently_dropped(self):
         self.add_second_group()
-        scope = self.scopes.pop()
+        group = self.groups.pop()
         self.assertEqual(self.get().status_code, 503)
-        self.scopes.append(scope)
+        self.groups.append(group)
         self.collection.find.return_value[0]['institutes'][1]['departments'].pop()
         self.assertEqual(self.get().status_code, 503)
 
@@ -456,19 +477,19 @@ class ReportTests(unittest.TestCase):
                 response = self.get(group_name=name)
                 self.assertEqual(response.status_code, 200, response.text)
                 self.assertEqual(len(response.json()), 1)
-                sql, params = self.executed[0]
-                self.assertEqual(params, (name,))
-                self.assertRegex(sql, r'WHERE g\.name\s*=\s*%s')
-                self.assertNotIn(name, sql)
-                self.assertNotIn(' OR ', sql.upper())
+                cypher = self.neo_run.call_args.args[0]
+                self.assertEqual(self.neo_run.call_args.kwargs['group_name'], name)
+                self.assertIn('WHERE g.name = $group_name', cypher)
+                self.assertNotIn(name, cypher)
+                self.assertEqual(self.executed[0][1], ([GROUP],))
         self.assertEqual(self.get(group_name='группа').status_code, 404)
         self.assertEqual(self.get(group_name='Группа').status_code, 404)
 
     def test_unknown_group_name_is_404_before_downstream_services(self):
         response = self.get(group_name='Неизвестная')
         self.assertEqual(response.status_code, 404)
-        self.assertEqual(len(self.executed), 1)
-        self.neo.driver.assert_not_called()
+        self.pg.assert_not_called()
+        self.neo_run.assert_called_once()
         self.mongo.assert_not_called()
         self.redis.mget.assert_not_called()
 
@@ -486,7 +507,7 @@ class ReportTests(unittest.TestCase):
         response = self.get(group_name='Группа')
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual([r['group']['group_id'] for r in response.json()], [GROUP, GROUP2])
-        self.assertEqual(self.neo_run.call_args.kwargs['group_ids'], [GROUP, GROUP2])
+        self.assertNotIn('group_ids', self.neo_run.call_args.kwargs)
 
     def test_filter_limits_graph_sql_redis_and_mongo_to_selected_scope(self):
         self.add_second_group()
@@ -496,7 +517,8 @@ class ReportTests(unittest.TestCase):
         response = self.get(group_name='Другая')
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual([r['group']['group_id'] for r in response.json()], [GROUP2])
-        self.assertEqual(self.neo_run.call_args.kwargs['group_ids'], [GROUP2])
+        self.assertEqual(self.neo_run.call_args.kwargs['group_name'], 'Другая')
+        self.assertEqual(self.executed[0][1], ([GROUP2],))
         self.redis.mget.assert_called_once_with([STUDENT2])
         course_params = next(params for sql, params in self.executed if 'FROM courses' in sql)
         self.assertEqual(course_params, ([COURSE], [DEPT2]))
@@ -510,9 +532,10 @@ class ReportTests(unittest.TestCase):
         response = self.get()
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(len(response.json()), 2)
-        sql, params = self.executed[0]
-        self.assertNotIn('WHERE', sql.upper())
-        self.assertEqual(params, ())
+        cypher = self.neo_run.call_args.args[0]
+        self.assertNotIn('WHERE g.name', cypher)
+        self.assertNotIn('group_name', self.neo_run.call_args.kwargs)
+        self.assertEqual(self.executed[0][1], ([GROUP, GROUP2],))
 
     def test_actual_candidate_sql_filters_exact_pairs_not_speciality_or_technical_flag(self):
         self.add_second_group()
