@@ -145,13 +145,18 @@ class AttendanceGraphTests(unittest.TestCase):
         self.collection.find.side_effect = RuntimeError('unavailable')
         self.assertEqual(self.client.get(PATH, params=self.params).status_code, 503)
 
+    def test_report_sql_has_only_three_named_stages_and_standard_round(self):
+        self.assertLessEqual(lab.ATTENDANCE_REPORT_SQL.count(' AS ('), 3)
+        self.assertIn('ROUND(', lab.ATTENDANCE_REPORT_SQL)
+        self.assertNotIn('div(', lab.ATTENDANCE_REPORT_SQL)
+
     def test_sparse_rounding_corrections_match_previous_python_percentages(self):
         for total in (32, 160, 4000):
             corrections = json.loads(lab.percentage_rounding_corrections([total, total]))
             for attended in range(total + 1):
                 hundredths, remainder = divmod(attended * 10000, total)
                 rounded = (hundredths + (remainder * 2 > total or
-                           remainder * 2 == total and hundredths % 2 == 1)) / 100
+                           remainder * 2 == total)) / 100
                 result = corrections.get(f'{total}:{attended}', rounded)
                 self.assertEqual(result, round(attended / total * 100, 2), (total, attended))
 

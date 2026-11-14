@@ -1,10 +1,7 @@
 import os
-from contextlib import closing
 from typing import List, Optional
 from fastapi import FastAPI, HTTPException, Query, status
 from pydantic import BaseModel
-import psycopg2
-from psycopg2.extras import RealDictCursor
 from pymongo import MongoClient
 from neo4j import GraphDatabase
 from dotenv import load_dotenv
@@ -13,13 +10,6 @@ env_path = os.path.join(os.path.dirname(__file__), '.env')
 load_dotenv(env_path if os.path.exists(env_path) else None)
 
 DEFAULT_HOST = os.getenv("DB_HOST", "localhost")
-
-# Подключение к PostgreSQL.
-PG_HOST = os.getenv("POSTGRES_HOST") or DEFAULT_HOST
-PG_PORT = os.getenv("POSTGRES_PORT", "5432")
-PG_USER = os.getenv("POSTGRES_USER", "admin")
-PG_PASS = os.getenv("POSTGRES_PASSWORD", "superpassword123!")
-PG_DB = os.getenv("POSTGRES_DB", "postgres")
 
 # Подключение к MongoDB.
 MONGO_HOST = os.getenv("MONGO_HOST") or DEFAULT_HOST
@@ -73,15 +63,6 @@ class CourseAudienceReportDTO(BaseModel):
     lectures: List[LectureAudienceInfoDTO]
 
 
-def get_pg_conn():
-    try:
-        return psycopg2.connect(
-            host=PG_HOST, port=PG_PORT, user=PG_USER, password=PG_PASS, dbname=PG_DB, connect_timeout=5
-        )
-    except Exception as e:
-        raise HTTPException(status_code=503, detail=f"PostgreSQL недоступен: {str(e)}")
-
-
 @app.get(
     "/api/v1/labs/lab2/audience-report",
     response_model=List[CourseAudienceReportDTO],
@@ -92,7 +73,7 @@ def get_audience_report(
         semester: int = Query(..., ge=1, description="Семестр обучения", json_schema_extra={"example": 1}),
         enrollment_year: int = Query(..., ge=1, description="Год поступления (набора) групп", json_schema_extra={"example": 2023})
 ):
-    # В графе ищем группы нужного года поступления и их занятия.
+    # В графе отбираем курсы, лекции и группы, затем считаем занятия и слушателей.
     try:
         with GraphDatabase.driver(
             f"bolt://{NEO4J_HOST}:{NEO4J_BOLT_PORT}",
@@ -104,15 +85,29 @@ def get_audience_report(
                 WHERE g.enrollment_year = $enrollment_year
                 MATCH (g)-[:HAS_SCHEDULE]->(sc:Schedule)-[:FOR_LECTURE]->(l:Lecture)
                       -[:OF_COURSE]->(c:Course)
-                WHERE l.type = 'Lecture'
+                WHERE c.semester = $semester
+                  AND l.type = 'Lecture'
+                  AND l.technical_requirements = true
                 WITH c, l, g, count(DISTINCT sc) AS scheduled_count
                 MATCH (st:Student)-[:BELONGS_TO]->(g)
-                RETURN c.id AS course_id, l.id AS lecture_id, g.id AS group_id,
-                       scheduled_count, count(DISTINCT st) AS listeners_count
+                RETURN c.id AS course_id, c.name AS course_name,
+                       c.description AS description, c.semester AS semester,
+                       c.department_id AS department_id,
+                       c.speciality_id AS speciality_id,
+                       c.speciality_name AS speciality_name,
+                       c.speciality_code AS speciality_code,
+                       c.duration_hours AS duration_hours,
+                       c.lecture_hours AS lecture_hours,
+                       c.practice_hours AS practice_hours,
+                       l.id AS lecture_id, l.title AS lecture_title,
+                       l.annotation AS annotation, l.type AS lecture_type,
+                       l.technical_requirements AS technical_requirements,
+                       g.id AS group_id, scheduled_count,
+                       count(DISTINCT st) AS listeners_count
                 """
                 # Студентов считаем после занятий, чтобы не посчитать одного человека несколько раз.
                 result = session.run(
-                    cypher_query, enrollment_year=enrollment_year
+                    cypher_query, semester=semester, enrollment_year=enrollment_year
                 )
                 graph_rows = [dict(record) for record in result
                               if record["listeners_count"] > 0 and record["scheduled_count"] > 0]
@@ -121,74 +116,26 @@ def get_audience_report(
 
     if not graph_rows:
         return []
-    candidate_pairs = sorted({(row["course_id"], row["lecture_id"]) for row in graph_rows})
-
-    # Из графовой выборки оставляем лекции нужного семестра и с оборудованием.
-    pg_sql = """
-    SELECT
-        c.id AS course_id,
-        c.name AS course_name,
-        c.description,
-        c.semester,
-        c.department_id,
-        c.duration_hours,
-        c.lecture_hours,
-        c.practice_hours,
-        sp.id AS speciality_id,
-        sp.name AS speciality_name,
-        sp.code AS speciality_code,
-        l.id AS lecture_id,
-        l.title AS lecture_title,
-        l.annotation,
-        l.type AS lecture_type,
-        l.technical_requirements
-    FROM courses c
-    JOIN specialities sp ON sp.id = c.speciality_id
-    JOIN lectures l ON l.course_id = c.id
-    WHERE c.semester = %s
-      AND l.type = 'Lecture'
-      AND l.technical_requirements IS TRUE
-      AND (c.id, l.id) IN (SELECT * FROM unnest(%s::uuid[], %s::uuid[]))
-    ORDER BY c.id, l.id;
-    """
-
-    with closing(get_pg_conn()) as conn:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            # Читаем атрибуты только найденных в графе пар курс/лекция.
-            cur.execute(pg_sql, (semester, [c for c, l in candidate_pairs],
-                                 [l for c, l in candidate_pairs]))
-            lecture_rows = cur.fetchall()
-
-    if not lecture_rows:
-        return []
-
     courses = {}
-    for row in lecture_rows:
-        course_id = str(row["course_id"])
-        courses.setdefault(course_id, {"info": row, "lectures": []})["lectures"].append(row)
-
-    selected_pairs = {(str(row["course_id"]), str(row["lecture_id"])) for row in lecture_rows}
     lecture_stats = {}
     course_groups = {}
-    for record in graph_rows:
-        course_id = record["course_id"]
-        lecture_id = record["lecture_id"]
-        if (course_id, lecture_id) not in selected_pairs:
-            continue
-        group_id = record["group_id"]
-        listeners = record["listeners_count"]
-        if listeners <= 0 or record["scheduled_count"] <= 0:
-            continue
-        stats = lecture_stats.setdefault(lecture_id, {
-            "scheduled_count": 0, "listeners_count": 0
-        })
-        stats["scheduled_count"] += record["scheduled_count"]
-        stats["listeners_count"] += listeners
+    required_fields = (
+        "course_id", "course_name", "semester", "department_id",
+        "speciality_id", "speciality_name", "speciality_code",
+        "lecture_id", "lecture_title", "lecture_type", "technical_requirements", "group_id"
+    )
+    for row in graph_rows:
+        if any(row.get(field) is None or row[field] == "" for field in required_fields):
+            raise HTTPException(status_code=503, detail="Обязательные метаданные Neo4j неполны")
+        course_id = row["course_id"]
+        lecture_id = row["lecture_id"]
+        course = courses.setdefault(course_id, {"info": row, "lectures": {}})
+        course["lectures"][lecture_id] = row
+        stats = lecture_stats.setdefault(lecture_id, {"scheduled_count": 0, "listeners_count": 0})
+        stats["scheduled_count"] += row["scheduled_count"]
+        stats["listeners_count"] += row["listeners_count"]
         # В числе слушателей курса каждую группу учитываем один раз.
-        course_groups.setdefault(course_id, {})[group_id] = listeners
-    courses = {course_id: course for course_id, course in courses.items() if course_id in course_groups}
-    if not courses:
-        return []
+        course_groups.setdefault(course_id, {})[row["group_id"]] = row["listeners_count"]
 
     # За названиями подразделений идём после отбора курсов.
     department_ids = sorted({str(course["info"]["department_id"]) for course in courses.values()})
@@ -220,18 +167,14 @@ def get_audience_report(
         raise HTTPException(status_code=503, detail="Иерархия кафедры в MongoDB неполна")
 
     reports = []
-    for course_id, course in courses.items():
+    for course_id, course in sorted(courses.items()):
         row = course["info"]
         department_id = str(row["department_id"])
         department = department_map.get(department_id, {})
         university_id = department["university_id"]
         lectures = []
-        for lecture in course["lectures"]:
-            lecture_id = str(lecture["lecture_id"])
-            # Пропускаем лекции без занятий или слушателей.
-            stats = lecture_stats.get(lecture_id)
-            if not stats or stats["scheduled_count"] <= 0 or stats["listeners_count"] <= 0:
-                continue
+        for lecture_id, lecture in sorted(course["lectures"].items()):
+            stats = lecture_stats[lecture_id]
             lectures.append(LectureAudienceInfoDTO(
                 lecture_id=lecture_id,
                 lecture_title=lecture["lecture_title"],
@@ -241,8 +184,6 @@ def get_audience_report(
                 scheduled_classes_count=stats["scheduled_count"],
                 required_room_capacity=stats["listeners_count"]
             ))
-        if not lectures:
-            continue
         reports.append(CourseAudienceReportDTO(
             course_id=course_id,
             course_name=row["course_name"],

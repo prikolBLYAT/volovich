@@ -61,6 +61,24 @@ class GenerationTests(unittest.TestCase):
             self.assertIn(target, nodes)
         self.assertEqual({m['lecture_id'] for m in data['course_materials']}, set(lectures))
 
+    def test_graph_course_and_lecture_properties_match_relational_source(self):
+        specialities = {row[0]: row for row in self.data['specialities']}
+        courses = {row[0]: row for row in self.data['courses']}
+        lectures = {row['id']: row for row in self.data['lectures']}
+        for label, props in self.data['neo_nodes']:
+            if label == 'Course':
+                row = courses[props['id']]
+                spec = specialities[row[1]]
+                expected = dict(id=row[0], speciality_id=row[1], department_id=row[2], name=row[3],
+                                description=row[4], semester=row[5], duration_hours=row[6],
+                                lecture_hours=row[7], practice_hours=row[8],
+                                speciality_name=spec[1], speciality_code=spec[2])
+                self.assertEqual(props, expected)
+            elif label == 'Lecture':
+                row = lectures[props['id']]
+                self.assertEqual(props, {key: row[key] for key in
+                                        ('id', 'title', 'type', 'annotation', 'technical_requirements')})
+
     def test_pg_ddl_has_external_department_uuids_not_hierarchy_tables(self):
         cursor = MagicMock()
         seed.init_pg_tables(cursor)

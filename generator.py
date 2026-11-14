@@ -180,12 +180,19 @@ def generate_random_data():
                         lec_hours = total_hours // 2
                         prac_hours = total_hours // 2
 
-                        courses.append((
+                        # Один набор значений для PostgreSQL и свойств графа.
+                        course = (
                             course_id, spec_id, dept_id, c_name, fake.paragraph(nb_sentences=1),
                             random.randint(1, 8), total_hours, lec_hours, prac_hours
-                        ))
-
-                        neo_nodes.append(("Course", {"id": course_id, "name": c_name}))
+                        )
+                        courses.append(course)
+                        neo_nodes.append(("Course", {
+                            "id": course_id, "name": c_name, "description": course[4],
+                            "semester": course[5], "department_id": dept_id,
+                            "speciality_id": spec_id, "speciality_name": spec_name,
+                            "speciality_code": code, "duration_hours": total_hours,
+                            "lecture_hours": lec_hours, "practice_hours": prac_hours
+                        }))
 
                         course_lectures = []
                         for cl_idx in range(LECTURES_PER_COURSE):
@@ -212,8 +219,8 @@ def generate_random_data():
                             }
                             course_materials.append(material)
 
-                            neo_nodes.append(
-                                ("Lecture", {"id": lec_id, "title": lec_item["title"], "type": lec_item["type"]}))
+                            neo_nodes.append(("Lecture", {key: lec_item[key] for key in
+                                ("id", "title", "type", "annotation", "technical_requirements")}))
                             neo_relations.append((lec_id, course_id, "OF_COURSE"))
 
                         if course_lectures and group_ids:
