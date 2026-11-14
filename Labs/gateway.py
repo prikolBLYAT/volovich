@@ -152,20 +152,26 @@ async def proxy_lab2_report(
 @app.get(
     "/api/v1/labs/lab3/hours-report",
     tags=["Лабораторная работа №3"],
-    summary="Плановые и посещённые часы лекций по всем группам"
+    summary="Плановые и посещённые часы лекций по группам"
 )
 async def proxy_lab3_report(
     request: Request,
     period_start: str = Query("2026-09-01", description="Начало периода (YYYY-MM-DD)"),
     period_end: str = Query("2026-09-30", description="Конец периода (YYYY-MM-DD)"),
+    group_name: str | None = Query(None, min_length=1, description="Точное название группы; без параметра — все группы"),
     _user: dict = Depends(verify_jwt)
 ):
+    if group_name is not None and not group_name.strip():
+        raise HTTPException(status_code=422, detail="Название группы не может быть пустым")
+    params = {"period_start": period_start, "period_end": period_end}
+    if group_name is not None:
+        params["group_name"] = group_name
     auth_header = request.headers.get("Authorization")
     async with httpx.AsyncClient(timeout=30.0) as client:
         try:
             response = await client.get(
                 f"{LAB3_URL}/api/v1/labs/lab3/hours-report",
-                params={"period_start": period_start, "period_end": period_end},
+                params=params,
                 headers={"Authorization": auth_header} if auth_header else {}
             )
         except httpx.RequestError:

@@ -67,6 +67,22 @@ class GatewayTests(unittest.TestCase):
                 self.assertEqual(self.upstream.get.call_args.kwargs['params'],
                                  {**DEFAULTS[path], **values, **({'extra': 'value'} if not path.startswith('lab3/') else {})})
 
+    def test_lab3_forwards_exact_group_name(self):
+        name = "ИВТ-21 ' OR 1=1 --"
+        response = self.client.get(PREFIX + 'lab3/hours-report',
+                                   params={'group_name': name}, headers=self.headers)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(self.upstream.get.call_args.kwargs['params'],
+                         {**DEFAULTS['lab3/hours-report'], 'group_name': name})
+
+    def test_lab3_empty_group_name_is_rejected_before_proxying(self):
+        for name in ('', '   ', '\t'):
+            with self.subTest(name=name):
+                response = self.client.get(PREFIX + 'lab3/hours-report',
+                                           params={'group_name': name}, headers=self.headers)
+                self.assertEqual(response.status_code, 422, response.text)
+        self.upstream.get.assert_not_awaited()
+
     def test_lab3_does_not_forward_group_filter(self):
         response = self.client.get(PREFIX + 'lab3/hours-report',
                                    params={'group_id': 'old-group'}, headers=self.headers)
@@ -78,7 +94,8 @@ class GatewayTests(unittest.TestCase):
         for path, expected in DEFAULTS.items():
             with self.subTest(path=path):
                 params = paths[PREFIX + path]['get']['parameters']
-                self.assertEqual({p['name']: p['schema'].get('default') for p in params}, expected)
+                documented = {**expected, **({'group_name': None} if path == 'lab3/hours-report' else {})}
+                self.assertEqual({p['name']: p['schema'].get('default') for p in params}, documented)
                 self.assertTrue(all(not p['required'] for p in params))
 
     def test_all_proxies_require_valid_unexpired_token(self):

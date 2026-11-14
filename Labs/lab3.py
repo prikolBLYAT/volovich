@@ -80,8 +80,12 @@ class CourseHoursDTO(BaseModel):
     lecture_hours: Optional[int]
     practice_hours: Optional[int]
     planned_classes: int
-    attended_classes: int
     planned_hours: int
+
+
+class StudentCourseAttendanceDTO(BaseModel):
+    course_id: str
+    attended_classes: int
     attended_hours: int
 
 
@@ -94,7 +98,7 @@ class StudentHoursDTO(BaseModel):
     phone: Optional[str]
     student_card_number: str
     status: Optional[str]
-    courses: List[CourseHoursDTO]
+    attendance: List[StudentCourseAttendanceDTO]
 
 
 class GroupHoursReportDTO(BaseModel):
@@ -102,6 +106,7 @@ class GroupHoursReportDTO(BaseModel):
     period_start: date
     period_end: date
     academic_hours_per_lecture: int = 2
+    courses: List[CourseHoursDTO]
     students: List[StudentHoursDTO]
 
 
@@ -176,26 +181,33 @@ def get_student_profiles(student_groups):
 
 @app.get(
     '/api/v1/labs/lab3/hours-report', response_model=List[GroupHoursReportDTO],
-    tags=['Лабораторная работа №3'], summary='Плановые и посещённые часы лекций по всем группам',
+    tags=['Лабораторная работа №3'], summary='Плановые и посещённые часы лекций по группам',
 )
 def get_hours_report(
     period_start: date = Query(..., description='Начало периода, включительно'),
     period_end: date = Query(..., description='Конец периода, включительно'),
+    group_name: Optional[str] = Query(
+        None, min_length=1, description='Точное название группы с учётом регистра; без фильтра — все группы',
+    ),
 ):
+    if group_name is not None and not group_name.strip():
+        raise HTTPException(status_code=422, detail='Название группы не может быть пустым или состоять из пробелов')
     if period_start > period_end:
         raise HTTPException(status_code=400, detail='period_start не может быть позже period_end')
 
     # Названия подразделений читаем только из MongoDB.
     with closing(get_pg_conn()) as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute('''
+            query = '''
                 SELECT g.id AS group_id, g.name AS group_name, g.speciality_id, g.department_id,
                        g.enrollment_year, g.curator, sp.name AS speciality_name,
                        sp.code AS speciality_code, sp.degree_level, sp.duration
                 FROM groups g
                 JOIN specialities sp ON sp.id = g.speciality_id
-                ORDER BY g.id;
-            ''')
+            '''
+            if group_name is not None:
+                query += ' WHERE g.name = %s'
+            cur.execute(query + ' ORDER BY g.id;', (group_name,) if group_name is not None else ())
             group_rows = cur.fetchall()
     groups = {
         str(row['group_id']): GroupInfoDTO(**{
@@ -204,6 +216,8 @@ def get_hours_report(
         }) for row in group_rows
     }
     if not groups:
+        if group_name is not None:
+            raise HTTPException(status_code=404, detail='Группа с указанным названием не найдена')
         return []
 
     # Собираем состав до расписания, чтобы студенты не размножали строки занятий.
@@ -329,21 +343,25 @@ def get_hours_report(
 
     reports = []
     for group_id, group in groups.items():
+        courses = []
+        for course in courses_by_group[group_id]:
+            course_id = str(course['course_id'])
+            planned = len(schedules_by_group[group_id][course_id])
+            courses.append(CourseHoursDTO(
+                **{**dict(course), 'course_id': course_id,
+                   'speciality_id': str(course['speciality_id']), 'department_id': str(course['department_id'])},
+                planned_classes=planned, planned_hours=planned * 2,
+            ))
         students = []
         for student_id in students_by_group[group_id]:
-            course_hours = []
-            for course in courses_by_group[group_id]:
-                course_id = str(course['course_id'])
-                planned = len(schedules_by_group[group_id][course_id])
-                attended = attendance.get((group_id, student_id, course_id), 0)
-                course_hours.append(CourseHoursDTO(
-                    **{**dict(course), 'course_id': course_id,
-                       'speciality_id': str(course['speciality_id']), 'department_id': str(course['department_id'])},
-                    planned_classes=planned, attended_classes=attended,
-                    planned_hours=planned * 2, attended_hours=attended * 2,
+            student_attendance = []
+            for course in courses:
+                attended = attendance.get((group_id, student_id, course.course_id), 0)
+                student_attendance.append(StudentCourseAttendanceDTO(
+                    course_id=course.course_id, attended_classes=attended, attended_hours=attended * 2,
                 ))
-            students.append(StudentHoursDTO(**profiles[student_id], courses=course_hours))
+            students.append(StudentHoursDTO(**profiles[student_id], attendance=student_attendance))
         reports.append(GroupHoursReportDTO(
-            group=group, period_start=period_start, period_end=period_end, students=students,
+            group=group, period_start=period_start, period_end=period_end, courses=courses, students=students,
         ))
     return reports

@@ -193,7 +193,7 @@ class ReportTests(unittest.TestCase):
     def execute(self, sql, params=()):
         self.executed.append((sql, params))
         if 'FROM groups g' in sql:
-            self.cursor.fetchall.return_value = self.groups
+            self.cursor.fetchall.return_value = [row for row in self.groups if not params or row['group_name'] == params[0]]
         elif 'FROM courses' in sql:
             self.cursor.fetchall.return_value = self.courses
         elif 'JOIN attendance' in sql:
@@ -201,7 +201,7 @@ class ReportTests(unittest.TestCase):
         elif 'FROM students' in sql:
             self.cursor.fetchall.return_value = self.profile_rows
         else:
-            raise AssertionError('Unexpected PostgreSQL query in isolated test')
+            raise AssertionError('Неожиданный SQL в изолированном тесте')
 
     def get(self, **overrides):
         return self.client.get(PATH, params={**self.params, **overrides})
@@ -213,9 +213,9 @@ class ReportTests(unittest.TestCase):
         body = response.json()[0]
         self.assertEqual(body['group']['institute_name'], 'Институт')
         self.assertEqual(body['group']['university_name'], 'Вуз')
-        course = body['students'][0]['courses'][0]
+        course = body['courses'][0]
         self.assertEqual((course['planned_classes'], course['planned_hours']), (2, 4))
-        self.assertEqual((course['attended_classes'], course['attended_hours']), (0, 0))
+        self.assertEqual(body['students'][0]['attendance'][0], dict(course_id=COURSE, attended_classes=0, attended_hours=0))
         sql, params = next(item for item in self.executed if 'JOIN attendance' in item[0])
         self.assertIn('COUNT(DISTINCT a.schedule_id)', sql)
         self.assertIn('a.date BETWEEN %s AND %s', sql)
@@ -259,16 +259,16 @@ class ReportTests(unittest.TestCase):
         response = self.get()
         self.assertEqual(response.status_code, 200, response.text)
         students = response.json()[0]['students']
-        self.assertEqual(students[0]['courses'][0]['attended_hours'], 2)
-        self.assertEqual(students[1]['courses'][0]['attended_hours'], 0)
+        self.assertEqual(students[0]['attendance'][0]['attended_hours'], 2)
+        self.assertEqual(students[1]['attendance'][0]['attended_hours'], 0)
 
-    def test_empty_period_retains_students_with_empty_courses(self):
+    def test_empty_period_retains_students_with_empty_attendance(self):
         self.scope['courses'] = []
         response = self.get()
         self.assertEqual(response.status_code, 200, response.text)
         students = response.json()[0]['students']
         self.assertEqual(len(students), 1)
-        self.assertEqual(students[0]['courses'], [])
+        self.assertEqual(students[0]['attendance'], [])
         self.assertEqual(len(self.executed), 1)
 
     def test_empty_roster_returns_empty_students(self):
@@ -296,7 +296,7 @@ class ReportTests(unittest.TestCase):
 
     def test_group_id_is_not_an_api_input(self):
         parameters = self.client.get('/openapi.json').json()['paths'][PATH]['get']['parameters']
-        self.assertEqual({item['name'] for item in parameters}, {'period_start', 'period_end'})
+        self.assertEqual({item['name'] for item in parameters}, {'period_start', 'period_end', 'group_name'})
         self.assertEqual(self.get(group_id='not-a-uuid').status_code, 200)
 
     def test_missing_neo_group_returns_503(self):
@@ -331,10 +331,10 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.text)
         first, second = response.json()
         self.assertEqual((first['group']['group_id'], second['group']['group_id']), (GROUP, GROUP2))
-        course = first['students'][0]['courses'][0]
-        self.assertEqual((course['planned_hours'], course['attended_hours']), (4, 2))
+        self.assertEqual(first['courses'][0]['planned_hours'], 4)
+        self.assertEqual(first['students'][0]['attendance'][0]['attended_hours'], 2)
         self.assertEqual(second['students'][0]['group_id'], GROUP2)
-        self.assertEqual(second['students'][0]['courses'], [])
+        self.assertEqual(second['students'][0]['attendance'], [])
         self.assertEqual(len(self.executed), 3)
         self.neo_run.assert_called_once()
         self.assertEqual(self.neo_run.call_args.kwargs['group_ids'], [GROUP, GROUP2])
@@ -371,9 +371,9 @@ class ReportTests(unittest.TestCase):
                                course_id=other_course, attended_classes=1)]
         response = self.get()
         self.assertEqual(response.status_code, 200, response.text)
-        courses = [group['students'][0]['courses'] for group in response.json()]
+        courses = [group['courses'] for group in response.json()]
         self.assertEqual([[c['course_id'] for c in rows] for rows in courses], [[COURSE], [other_course]])
-        self.assertEqual(courses[1][0]['attended_hours'], 2)
+        self.assertEqual(response.json()[1]['students'][0]['attendance'][0]['attended_hours'], 2)
         self.assertEqual(len(self.executed), 3)
 
     def test_multiple_courses_keep_attendance_separate(self):
@@ -383,7 +383,7 @@ class ReportTests(unittest.TestCase):
         self.attendance = [dict(group_id=GROUP, student_id=STUDENT, course_id=other_course, attended_classes=1)]
         response = self.get()
         self.assertEqual(response.status_code, 200, response.text)
-        courses = response.json()[0]['students'][0]['courses']
+        courses = response.json()[0]['students'][0]['attendance']
         self.assertEqual([(c['course_id'], c['attended_hours']) for c in courses], [(COURSE, 0), (other_course, 2)])
 
     def test_same_department_shared_course_keeps_group_hours_separate(self):
@@ -394,8 +394,8 @@ class ReportTests(unittest.TestCase):
             dict(group_id=GROUP2, student_id=STUDENT2, course_id=COURSE, attended_classes=1)]
         response = self.get()
         self.assertEqual(response.status_code, 200, response.text)
-        courses = [group['students'][0]['courses'][0] for group in response.json()]
-        self.assertEqual([(c['planned_hours'], c['attended_hours']) for c in courses], [(4, 0), (2, 2)])
+        self.assertEqual([group['courses'][0]['planned_hours'] for group in response.json()], [4, 2])
+        self.assertEqual([group['students'][0]['attendance'][0]['attended_hours'] for group in response.json()], [0, 2])
         self.assertEqual(len(self.executed), 3)
 
     def test_other_group_missing_neo_or_mongo_is_not_silently_dropped(self):
@@ -424,9 +424,95 @@ class ReportTests(unittest.TestCase):
         response = self.get()
         self.assertEqual(response.status_code, 200, response.text)
         first, second = response.json()
-        self.assertEqual(first['students'][0]['courses'], [])
+        self.assertEqual(first['students'][0]['attendance'], [])
         self.assertEqual(second['students'], [])
         self.assertEqual(len(self.executed), 1)
+
+    def test_normalized_contract_keeps_course_metadata_once_and_two_attendance_rows(self):
+        self.scope['student_ids'] = [STUDENT, STUDENT2]
+        self.attendance = [dict(group_id=GROUP, student_id=STUDENT, course_id=COURSE, attended_classes=1)]
+        response = self.get()
+        self.assertEqual(response.status_code, 200, response.text)
+        report = response.json()[0]
+        self.assertEqual(len(report['courses']), 1)
+        self.assertEqual(set(report['courses'][0]), set(course_row()) | {'planned_classes', 'planned_hours'})
+        self.assertEqual(report['courses'][0]['planned_hours'], 2)
+        self.assertEqual(len(report['students']), 2)
+        for student, hours in zip(report['students'], [2, 0]):
+            self.assertEqual(set(student), set(profile()) | {'attendance'})
+            self.assertEqual(student['attendance'], [dict(course_id=COURSE, attended_classes=hours // 2, attended_hours=hours)])
+
+    def test_empty_roster_still_has_shared_course_plan(self):
+        self.scope['student_ids'] = []
+        report = self.get().json()[0]
+        self.assertEqual(report['students'], [])
+        self.assertEqual(report['courses'], [{**course_row(), 'planned_classes': 1, 'planned_hours': 2}])
+
+    def test_group_name_exact_binding_preserves_quotes_case_and_significant_spaces(self):
+        for name in ['Группа', "Группа' OR 1=1 --", '  Группа  ']:
+            with self.subTest(name=name):
+                self.groups[0]['group_name'] = name
+                self.executed.clear()
+                response = self.get(group_name=name)
+                self.assertEqual(response.status_code, 200, response.text)
+                self.assertEqual(len(response.json()), 1)
+                sql, params = self.executed[0]
+                self.assertEqual(params, (name,))
+                self.assertRegex(sql, r'WHERE g\.name\s*=\s*%s')
+                self.assertNotIn(name, sql)
+                self.assertNotIn(' OR ', sql.upper())
+        self.assertEqual(self.get(group_name='группа').status_code, 404)
+        self.assertEqual(self.get(group_name='Группа').status_code, 404)
+
+    def test_unknown_group_name_is_404_before_downstream_services(self):
+        response = self.get(group_name='Неизвестная')
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(len(self.executed), 1)
+        self.neo.driver.assert_not_called()
+        self.mongo.assert_not_called()
+        self.redis.mget.assert_not_called()
+
+    def test_blank_group_name_is_422_before_any_database(self):
+        for name in ['', ' ', '\t\n', '\u2003']:
+            with self.subTest(name=name):
+                self.assertEqual(self.get(group_name=name).status_code, 422)
+        self.pg.assert_not_called()
+        self.neo.driver.assert_not_called()
+        self.mongo.assert_not_called()
+        self.redis.mget.assert_not_called()
+
+    def test_duplicate_group_names_return_all_matches_as_list(self):
+        self.add_second_group()
+        response = self.get(group_name='Группа')
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual([r['group']['group_id'] for r in response.json()], [GROUP, GROUP2])
+        self.assertEqual(self.neo_run.call_args.kwargs['group_ids'], [GROUP, GROUP2])
+
+    def test_filter_limits_graph_sql_redis_and_mongo_to_selected_scope(self):
+        self.add_second_group()
+        self.groups[1]['group_name'] = 'Другая'
+        self.neo_run.return_value.data.side_effect = lambda: [self.scopes[1]]
+        self.courses = [course_row(department_id=DEPT2)]
+        response = self.get(group_name='Другая')
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual([r['group']['group_id'] for r in response.json()], [GROUP2])
+        self.assertEqual(self.neo_run.call_args.kwargs['group_ids'], [GROUP2])
+        self.redis.mget.assert_called_once_with([STUDENT2])
+        course_params = next(params for sql, params in self.executed if 'FROM courses' in sql)
+        self.assertEqual(course_params, ([COURSE], [DEPT2]))
+        attendance_params = next(params for sql, params in self.executed if 'JOIN attendance' in sql)
+        self.assertEqual(attendance_params[:4], ([SCHEDULE2], [COURSE], [GROUP2], [STUDENT2]))
+        self.assertEqual(self.collection.find.call_args.args[0],
+                         {'institutes.departments.department_id': {'$in': [DEPT2]}})
+
+    def test_no_filter_has_no_optional_sql_predicate(self):
+        self.add_second_group()
+        response = self.get()
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(len(response.json()), 2)
+        sql, params = self.executed[0]
+        self.assertNotIn('WHERE', sql.upper())
+        self.assertEqual(params, ())
 
     def test_actual_candidate_sql_filters_exact_pairs_not_speciality_or_technical_flag(self):
         self.add_second_group()
