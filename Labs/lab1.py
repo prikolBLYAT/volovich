@@ -128,20 +128,7 @@ def get_es_client():
         )
 
 
-ATTENDANCE_REPORT_SQL = """
-SELECT a.student_id, COUNT(DISTINCT a.schedule_id) AS total_classes,
-       COUNT(DISTINCT a.schedule_id) FILTER (WHERE a.mark = 1) AS attended_classes,
-       ROUND(100.0 * COUNT(DISTINCT a.schedule_id) FILTER (WHERE a.mark = 1)
-             / COUNT(DISTINCT a.schedule_id), 2) AS attendance_percentage
-FROM attendance a
-WHERE a.date BETWEEN %s AND %s
-  AND a.schedule_id = ANY(%s::uuid[]) AND a.student_id = ANY(%s::uuid[])
-GROUP BY a.student_id
-HAVING ROUND(100.0 * COUNT(DISTINCT a.schedule_id) FILTER (WHERE a.mark = 1)
-             / COUNT(DISTINCT a.schedule_id), 2) BETWEEN %s AND %s
-ORDER BY attendance_percentage, total_classes DESC, a.student_id
-LIMIT %s
-"""
+
 
 
 # Отчёт о посещаемости лекций.
@@ -252,6 +239,21 @@ def get_attendance_report(
     schedule_ids = sorted({sid for ids in group_schedules.values() for sid in ids})
     params = (period_start, period_end, schedule_ids, student_ids,
               min_attendance_pct, max_attendance_pct, limit)
+
+    ATTENDANCE_REPORT_SQL = """
+    SELECT a.student_id, COUNT(DISTINCT a.schedule_id) AS total_classes,
+           COUNT(DISTINCT a.schedule_id) FILTER (WHERE a.mark = 1) AS attended_classes,
+           ROUND(100.0 * COUNT(DISTINCT a.schedule_id) FILTER (WHERE a.mark = 1)
+                 / COUNT(DISTINCT a.schedule_id), 2) AS attendance_percentage
+    FROM attendance a
+    WHERE a.date BETWEEN %s AND %s
+      AND a.schedule_id = ANY(%s::uuid[]) AND a.student_id = ANY(%s::uuid[])
+    GROUP BY a.student_id
+    HAVING ROUND(100.0 * COUNT(DISTINCT a.schedule_id) FILTER (WHERE a.mark = 1)
+                 / COUNT(DISTINCT a.schedule_id), 2) BETWEEN %s AND %s
+    ORDER BY attendance_percentage, total_classes DESC, a.student_id
+    LIMIT %s
+    """
     with closing(get_pg_conn()) as pg_conn:
         with pg_conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(ATTENDANCE_REPORT_SQL, params)

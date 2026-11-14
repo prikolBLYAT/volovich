@@ -1,0 +1,36 @@
+%%{init: {"theme": "default", "themeVariables": {"fontFamily": "Arial, sans-serif"}, "flowchart": {"curve": "stepAfter"}}}%%
+flowchart LR
+    e["E1 Gateway / прямой HTTP-клиент"]
+    p1(("2.1
+Отбор лекций
+и расписаний"))
+    p2(("2.2
+Посещения
+и рейтинг"))
+    p3(("2.3
+Обогащение
+и ответ"))
+    es@{ shape: lined-rectangle, label: "D5 Elasticsearch" }
+    neo@{ shape: lined-rectangle, label: "D2 Neo4j" }
+    pg@{ shape: lined-rectangle, label: "D1 PostgreSQL" }
+    cache@{ shape: lined-rectangle, label: "D4 Redis" }
+    mongo@{ shape: lined-rectangle, label: "D3 MongoDB" }
+    e -->|"Термин, период, диапазон %, limit"| p1
+    p1 -->|"multi_match: title^3, content_text"| es
+    es -->|"lecture_id"| p1
+    p1 -->|"lecture_id, период, тип Lecture"| neo
+    neo -->|"Студенты, группы, уникальные schedule_id"| p1
+    p1 -->|"Область занятий и студентов; параметры рейтинга"| p2
+    p2 -->|"UUID занятий и студентов; даты; mark=1"| pg
+    pg -->|"COUNT DISTINCT посещений"| p2
+    p2 -->|"Топ по %; UUID студентов и групп; статистика и метаданные"| p3
+    p3 -->|"UUID групп; UUID студентов при промахе"| pg
+    pg -->|"Группы, специальности, кафедры; fallback профилей"| p3
+    p3 -->|"MGET: UUID студентов топа"| cache
+    cache -->|"Профили JSON или промах / невалидный профиль"| p3
+    p3 -->|"SETEX: UUID → профиль из PG; 86400 с"| cache
+    p3 -->|"UUID кафедр итоговых групп"| mongo
+    mongo -->|"Кафедра, институт, вуз"| p3
+    p3 -->|"ReportResponseDTO: статистика и полные профили"| e
+    p1 -->|"Пустой отчёт или ошибка ES / Neo4j"| e
+    p2 -->|"Пустой отчёт или ошибка SQL"| e

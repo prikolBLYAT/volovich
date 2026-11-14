@@ -1,0 +1,27 @@
+%%{init: {"theme": "default", "themeVariables": {"fontFamily": "Arial, sans-serif"}, "flowchart": {"curve": "stepAfter"}}}%%
+flowchart LR
+    acc["E1 Аналитик / HTTP-клиент"]
+    auth(("1.0
+Аутентификация
+и HTTP-прокси"))
+    report(("2.0
+Вместимость аудиторий"))
+    acc -->|"Login: username, password"| auth
+    auth -->|"JWT HS256 на 12 ч или 401"| acc
+    acc -->|"Query отчёта и Bearer JWT"| auth
+    auth -->|"Проверенные JWT; query и Authorization"| report
+    report -->|"JSON отчёта или ошибка сервиса"| auth
+    auth -->|"JSON отчёта или HTTP-ошибка"| acc
+    acc -->|"Query напрямую :8002, без JWT"| report
+    report -->|"JSON или ошибка прямого вызова"| acc
+    pg@{ shape: lined-rectangle, label: "D1 PostgreSQL" }
+    report -->|"Семестр; Lecture; technical_requirements=true; затем UUID кафедр"| pg
+    pg -->|"Курсы и лекции; кафедра, институт, UUID вуза"| report
+    neo@{ shape: lined-rectangle, label: "D2 Neo4j" }
+    report -->|"UUID курсов и лекций; enrollment_year"| neo
+    neo -->|"Группы; число занятий и студентов по лекции"| report
+    mongo@{ shape: lined-rectangle, label: "D3 MongoDB" }
+    report -->|"UUID нужных университетов"| mongo
+    mongo -->|"UUID и названия вузов"| report
+    classDef store fill:#ffffff,stroke:#526579,stroke-width:1px
+    class pg,neo,mongo store

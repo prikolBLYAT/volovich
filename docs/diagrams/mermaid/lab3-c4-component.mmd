@@ -1,0 +1,31 @@
+%%{init: {"theme":"neutral","flowchart":{"curve":"stepAfter","nodeSpacing":48,"rankSpacing":85},"themeVariables":{"fontFamily":"Arial, sans-serif","fontSize":"16px"}}}%%
+%% ЛР 3 — C4 C3: компоненты шлюза и сервиса
+flowchart TB
+    subgraph gw["api-gateway — gateway.py"]
+    auth["login / verify_jwt<br/>«Компонент»<br/>Функции + Depends / PyJWT<br/>Проверка локальных credentials;<br/>выпуск JWT на 12 ч; подпись и exp"]
+    class auth component
+    proxy["proxy_lab3_report<br/>«Компонент»<br/>Async handler / httpx<br/>Query и Authorization; timeout 30<br/>с; JSON и ошибки upstream"]
+    class proxy component
+    end
+    subgraph svc["lab3-service — lab3.py"]
+    handler["get_hours_report<br/>«Компонент»<br/>FastAPI handler<br/>Валидация query; оркестрация<br/>чтений и сборки отчёта"]
+    class handler component
+    logic["Расчёт и обогащение<br/>«Компонент»<br/>Логические участки handler, НЕ<br/>отдельные классы<br/>Состав и расписания; курсы<br/>кафедры; уникальные посещения;<br/>занятия × 2"]
+    class logic component
+    helper["get_pg_conn<br/>«Компонент»<br/>Функции подключения<br/>Соединения с ограничением времени;<br/>HTTP 503 при недоступности"]
+    class helper component
+    dto["Схемы ответа<br/>«Компонент»<br/>Pydantic BaseModel<br/>GroupInfoDTO, CourseHoursDTO,<br/>StudentHoursDTO,<br/>GroupHoursReportDTO"]
+    class dto component
+    profiles["get_student_profiles<br/>«Компонент»<br/>Функция<br/>MGET; проверка профиля и группы;<br/>PG fallback; SETEX; проверка<br/>согласованности"]
+    class profiles component
+    end
+    proxy -->|"Depends: проверяет Bearer JWT до<br/>вызова сервиса"| auth
+    proxy -->|"HTTP GET; передаёт query и<br/>Authorization; сервис JWT не<br/>проверяет"| handler
+    handler -->|"Выполняет встроенные логические<br/>участки, не сетевой вызов"| logic
+    handler -->|"Открывает подключения"| helper
+    handler -->|"Создаёт типизированный JSON-ответ"| dto
+    handler -->|"UUID студентов и группы → профили"| profiles
+    profiles -->|"PostgreSQL при промахе кэша"| helper
+    classDef component fill:#ffffff,stroke:#2d3142,color:#2d3142
+    classDef store fill:#ececec,stroke:#4f5d75,color:#2d3142
+    classDef actor fill:#e4ebf4,stroke:#2e5aa8,color:#2d3142

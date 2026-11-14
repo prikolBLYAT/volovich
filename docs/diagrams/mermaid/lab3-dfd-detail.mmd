@@ -1,0 +1,37 @@
+%%{init: {"theme": "default", "themeVariables": {"fontFamily": "Arial, sans-serif"}, "flowchart": {"curve": "stepAfter"}}}%%
+flowchart LR
+    e["E1 Gateway / прямой HTTP-клиент"]
+    p1(("2.1
+Группа
+и область лекций"))
+    p2(("2.2
+Курсы кафедры
+и посещения"))
+    p3(("2.3
+Профили
+и отчёт часов"))
+    pg@{ shape: lined-rectangle, label: "D1 PostgreSQL" }
+    neo@{ shape: lined-rectangle, label: "D2 Neo4j" }
+    mongo@{ shape: lined-rectangle, label: "D3 MongoDB" }
+    cache@{ shape: lined-rectangle, label: "D4 Redis" }
+    e -->|"UUID группы; начало и конец периода"| p1
+    p1 -->|"UUID группы"| pg
+    pg -->|"Группа, кафедра, специальность"| p1
+    p1 -->|"UUID группы, период, Lecture"| neo
+    neo -->|"UUID студентов и уникальные schedule_id по курсам"| p1
+    p1 -->|"Группа, студенты, занятия и курсы; период"| p2
+    p2 -->|"UUID курсов; department_id группы"| pg
+    pg -->|"Курсы своей кафедры, атрибуты"| p2
+    p2 -->|"Пары занятие–курс; UUID студентов; период; mark=1"| pg
+    pg -->|"Уникальные посещения студент–курс"| p2
+    p2 -->|"Группа, студенты, курсы, план и посещения; период"| p3
+    p3 -->|"MGET: UUID всех студентов группы"| cache
+    cache -->|"JSON-профили или промах / несоответствие UUID и группы"| p3
+    p3 -->|"Отсутствующие UUID студентов и UUID группы"| pg
+    pg -->|"Fallback: полные профили группы"| p3
+    p3 -->|"SETEX через pipeline: UUID → JSON; 86400 с"| cache
+    p3 -->|"UUID кафедры группы"| mongo
+    mongo -->|"Институт и вуз"| p3
+    p3 -->|"GroupHoursReportDTO; план и посещения × 2 часа"| e
+    p1 -->|"Ошибка валидации / 404 / 503"| e
+    p3 -->|"503: несогласованный состав или MongoDB недоступна"| e

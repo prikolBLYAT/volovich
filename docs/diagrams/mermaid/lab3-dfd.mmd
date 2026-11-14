@@ -1,0 +1,31 @@
+%%{init: {"theme": "default", "themeVariables": {"fontFamily": "Arial, sans-serif"}, "flowchart": {"curve": "stepAfter"}}}%%
+flowchart LR
+    acc["E1 Аналитик / HTTP-клиент"]
+    auth(("1.0
+Аутентификация
+и HTTP-прокси"))
+    report(("2.0
+Плановые и посещённые часы"))
+    acc -->|"Login: username, password"| auth
+    auth -->|"JWT HS256 на 12 ч или 401"| acc
+    acc -->|"Query отчёта и Bearer JWT"| auth
+    auth -->|"Проверенные JWT; query и Authorization"| report
+    report -->|"JSON отчёта или ошибка сервиса"| auth
+    auth -->|"JSON отчёта или HTTP-ошибка"| acc
+    acc -->|"Query напрямую :8003, без JWT"| report
+    report -->|"JSON или ошибка прямого вызова"| acc
+    pg@{ shape: lined-rectangle, label: "D1 PostgreSQL" }
+    report -->|"UUID группы; затем UUID курсов и кафедры; занятия и период; промахи профилей"| pg
+    pg -->|"Группа; курсы своей кафедры; mark=1; fallback профилей"| report
+    neo@{ shape: lined-rectangle, label: "D2 Neo4j" }
+    report -->|"UUID группы; включительный период; Lecture"| neo
+    neo -->|"UUID студентов; уникальные занятия по курсам"| report
+    mongo@{ shape: lined-rectangle, label: "D3 MongoDB" }
+    report -->|"UUID кафедры группы"| mongo
+    mongo -->|"Институт и вуз группы"| report
+    redis@{ shape: lined-rectangle, label: "D4 Redis" }
+    report -->|"MGET: UUID студентов группы"| redis
+    redis -->|"JSON-профили или промах"| report
+    report -->|"SETEX: UUID → JSON профиля из PG; TTL 86400 с"| redis
+    classDef store fill:#ffffff,stroke:#526579,stroke-width:1px
+    class pg,neo,mongo,redis store

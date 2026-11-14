@@ -1,34 +1,46 @@
-%%{init: {"theme": "default", "themeVariables": {"fontFamily": "Arial, sans-serif"}, "flowchart": {"curve": "stepAfter"}}}%%
-flowchart LR
-    acc["E1 Аналитик / HTTP-клиент"]
-    auth(("1.0
-Аутентификация
-и HTTP-прокси"))
-    report(("2.0
-Посещаемость лекций"))
-    acc -->|"Login: username, password"| auth
-    auth -->|"JWT HS256 на 12 ч или 401"| acc
-    acc -->|"Query отчёта и Bearer JWT"| auth
-    auth -->|"Проверенные JWT; query и Authorization"| report
-    report -->|"JSON отчёта или ошибка сервиса"| auth
-    auth -->|"JSON отчёта или HTTP-ошибка"| acc
-    acc -->|"Query напрямую :8001, без JWT"| report
-    report -->|"JSON или ошибка прямого вызова"| acc
-    pg@{ shape: lined-rectangle, label: "D1 PostgreSQL" }
-    report -->|"UUID студентов и занятий; период; UUID групп; отсутствующие профили"| pg
-    pg -->|"Посещения mark=1; группы и специальности; fallback профилей"| report
-    neo@{ shape: lined-rectangle, label: "D2 Neo4j" }
-    report -->|"lecture_id и период; только Lecture"| neo
-    neo -->|"UUID студентов, групп, занятий и лекций"| report
-    mongo@{ shape: lined-rectangle, label: "D3 MongoDB" }
-    report -->|"UUID кафедр итоговых групп"| mongo
-    mongo -->|"Названия кафедр, институтов и вузов"| report
-    redis@{ shape: lined-rectangle, label: "D4 Redis" }
-    report -->|"MGET: UUID итоговых студентов"| redis
-    redis -->|"JSON-профили или промах"| report
-    es@{ shape: lined-rectangle, label: "D5 Elasticsearch" }
-    report -->|"Термин: title^3 и content_text; size=10000"| es
-    es -->|"Уникальные lecture_id"| report
-    report -->|"SETEX: UUID → JSON профиля из PG; TTL 86400 с"| redis
-    classDef store fill:#ffffff,stroke:#526579,stroke-width:1px
-    class pg,neo,mongo,redis,es store
+flowchart TB
+    User["Внешняя сущность E1<br/>Пользователь"]:::entity
+    P1(("1.0 Приём и авторизация запроса<br/>API Gateway")):::process
+    P2(("2.0 Поиск материалов лекций<br/>по термину или фразе")):::process
+    P3(("3.0 Выборка расписаний,<br/>групп и студентов за период")):::process
+    P4(("4.0 Расчёт посещаемости<br/>и отбор студентов с минимальным процентом")):::process
+    P5(("5.0 Получение сведений<br/>об итоговых группах")):::process
+    P6(("6.0 Получение профилей студентов<br/>из кэша или PostgreSQL")):::process
+    P7(("7.0 Получение иерархии<br/>кафедра — институт — университет")):::process
+    P8(("8.0 Формирование<br/>JSON-отчёта")):::process
+    D1a[("D1.1 PostgreSQL<br/>Посещения занятий")]:::store
+    D1b[("D1.2 PostgreSQL<br/>Группы, специальности и кафедры")]:::store
+    D1c[("D1.3 PostgreSQL<br/>Профили студентов")]:::store
+    D2[("D2 Neo4j<br/>Лекция ← расписание<br/>← группа ← студент")]:::store
+    D3[("D3 MongoDB<br/>university_hierarchy")]:::store
+    D4[("D4 Redis<br/>JSON-профили студентов<br/>Ключ — student_id; TTL — сутки")]:::store
+    D5[("D5 Elasticsearch<br/>course_materials")]:::store
+    User -->|"JWT; term; period_start; period_end;<br/>min_attendance_pct; max_attendance_pct; limit"| P1
+    P1 -->|"Термин, период, диапазон процентов и limit"| P2
+    P2 -->|"Термин: title^3 и content_text;<br/>до 10 000 материалов"| D5
+    D5 -->|"Уникальные lecture_id"| P2
+    P2 -->|"lecture_id; период;<br/>параметры отбора студентов"| P3
+    P3 -->|"lecture_id; даты включительно;<br/>type = Lecture"| D2
+    D2 -->|"student_id, group_id;<br/>уникальные schedule_id и lecture_id"| P3
+    P3 -->|"Студенты и занятия их групп;<br/>период, диапазон процентов и limit"| P4
+    P4 -->|"student_id, schedule_id;<br/>период; mark = 1"| D1a
+    D1a -->|"Число уникальных посещений<br/>по студентам"| P4
+    P4 -->|"Итоговые студенты и group_id;<br/>число занятий, посещений и процент"| P5
+    P5 -->|"Только group_id итоговых студентов"| D1b
+    D1b -->|"Группы, специальности,<br/>кафедры и department_id"| P5
+    P5 -->|"student_id; статистика;<br/>сведения об итоговых группах"| P6
+    P6 -->|"student_id итоговых студентов"| D4
+    D4 -->|"JSON-профили<br/>или отсутствующие / невалидные данные"| P6
+    P6 -->|"student_id при промахе<br/>или недоступности Redis"| D1c
+    D1c -->|"Полные профили студентов"| P6
+    P6 -->|"Профили из PostgreSQL;<br/>ключ student_id; TTL 86400 с"| D4
+    P6 -->|"Профили, статистика, группы;<br/>department_id итоговых групп"| P7
+    P7 -->|"Только нужные department_id"| D3
+    D3 -->|"Кафедра, институт и университет"| P7
+    P7 -->|"Полные сведения о студентах;<br/>посещаемость, период и термин"| P8
+    P8 -->|"JSON-отчёт со студентами<br/>и параметрами выборки"| P1
+    P1 -->|"HTTP-ответ с отчётом"| User
+    classDef entity fill:#ffe8b6,color:#493712,stroke:#b48630
+    classDef process fill:#e5f0ff,color:#172c45,stroke:#437db3
+    classDef store fill:#f1f4f8,color:#172c45,stroke:#72859c
+

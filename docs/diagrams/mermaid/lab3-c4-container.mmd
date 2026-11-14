@@ -1,0 +1,29 @@
+%%{init: {"theme":"neutral","flowchart":{"curve":"stepAfter","nodeSpacing":48,"rankSpacing":85},"themeVariables":{"fontFamily":"Arial, sans-serif","fontSize":"16px"}}}%%
+%% ЛР 3 — C4 C2: Плановые и посещённые часы
+flowchart TB
+    analyst["Аналитик<br/>«Человек»<br/>Клиент HTTP API"]
+    class analyst actor
+    subgraph system["Аналитическая система — срез ЛР 3"]
+    gateway["api-gateway<br/>«Контейнер»<br/>Python / FastAPI / PyJWT / httpx<br/>Локальный login, JWT HS256,<br/>проксирование; :8000"]
+    class gateway component
+    service["lab3-service<br/>«Контейнер»<br/>Python / FastAPI / Pydantic<br/>Плановые и посещённые часы; :8003"]
+    class service component
+    pg["PostgreSQL<br/>«Хранилище»<br/>PostgreSQL<br/>Группа, курсы кафедры, посещения;<br/>fallback профилей"]
+    class pg store
+    neo["Neo4j<br/>«Хранилище»<br/>Neo4j<br/>Состав группы и расписания лекций<br/>по курсам"]
+    class neo store
+    mongo["MongoDB<br/>«Хранилище»<br/>MongoDB<br/>university_hierarchy: институт и<br/>вуз группы"]
+    class mongo store
+    redis["Redis<br/>«Хранилище»<br/>Redis<br/>JSON-профили студентов; ключ UUID;<br/>TTL 86400 с"]
+    class redis store
+    end
+    analyst -->|"Login и запрос отчёта с Bearer<br/>JWT; ответ JSON; HTTP :8000"| gateway
+    gateway -->|"GET с query и Authorization; ответ<br/>JSON; HTTP / httpx; 30 с"| service
+    analyst -->|"Прямой GET без JWT — обход шлюза;<br/>HTTP :8003"| service
+    service -->|"Группа, курсы кафедры, посещения;<br/>fallback профилей; SQL / psycopg2"| pg
+    service -->|"Состав группы и расписания лекций<br/>по курсам; Cypher / Bolt"| neo
+    service -->|"university_hierarchy: институт и<br/>вуз группы; MongoDB / PyMongo"| mongo
+    service -->|"JSON-профили студентов; ключ UUID;<br/>TTL 86400 с; MGET / SETEX"| redis
+    classDef component fill:#ffffff,stroke:#2d3142,color:#2d3142
+    classDef store fill:#ececec,stroke:#4f5d75,color:#2d3142
+    classDef actor fill:#e4ebf4,stroke:#2e5aa8,color:#2d3142

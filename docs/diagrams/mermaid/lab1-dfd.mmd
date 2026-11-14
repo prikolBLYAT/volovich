@@ -1,0 +1,34 @@
+%%{init: {"theme": "default", "themeVariables": {"fontFamily": "Arial, sans-serif"}, "flowchart": {"curve": "stepAfter"}}}%%
+flowchart LR
+    acc["E1 Аналитик / HTTP-клиент"]
+    auth(("1.0
+Аутентификация
+и HTTP-прокси"))
+    report(("2.0
+Посещаемость лекций"))
+    acc -->|"Login: username, password"| auth
+    auth -->|"JWT HS256 на 12 ч или 401"| acc
+    acc -->|"Query отчёта и Bearer JWT"| auth
+    auth -->|"Проверенные JWT; query и Authorization"| report
+    report -->|"JSON отчёта или ошибка сервиса"| auth
+    auth -->|"JSON отчёта или HTTP-ошибка"| acc
+    acc -->|"Query напрямую :8001, без JWT"| report
+    report -->|"JSON или ошибка прямого вызова"| acc
+    pg@{ shape: lined-rectangle, label: "D1 PostgreSQL" }
+    report -->|"UUID студентов и занятий; период; UUID групп; отсутствующие профили"| pg
+    pg -->|"Посещения mark=1; группы и специальности; fallback профилей"| report
+    neo@{ shape: lined-rectangle, label: "D2 Neo4j" }
+    report -->|"lecture_id и период; только Lecture"| neo
+    neo -->|"UUID студентов, групп, занятий и лекций"| report
+    mongo@{ shape: lined-rectangle, label: "D3 MongoDB" }
+    report -->|"UUID кафедр итоговых групп"| mongo
+    mongo -->|"Названия кафедр, институтов и вузов"| report
+    redis@{ shape: lined-rectangle, label: "D4 Redis" }
+    report -->|"MGET: UUID итоговых студентов"| redis
+    redis -->|"JSON-профили или промах"| report
+    es@{ shape: lined-rectangle, label: "D5 Elasticsearch" }
+    report -->|"Термин: title^3 и content_text; size=10000"| es
+    es -->|"Уникальные lecture_id"| report
+    report -->|"SETEX: UUID → JSON профиля из PG; TTL 86400 с"| redis
+    classDef store fill:#ffffff,stroke:#526579,stroke-width:1px
+    class pg,neo,mongo,redis,es store
