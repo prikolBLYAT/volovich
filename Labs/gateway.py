@@ -86,16 +86,18 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
 )
 async def proxy_lab1_report(
     request: Request,
-    term: str = Query(..., description="Термин/фраза для поиска в лекциях"),
-    period_start: str = Query(..., description="Начало периода (YYYY-MM-DD)"),
-    period_end: str = Query(..., description="Конец периода (YYYY-MM-DD)"),
+    term: str = Query("Базы данных", description="Термин/фраза для поиска в лекциях"),
+    period_start: str = Query("2026-09-01", description="Начало периода (YYYY-MM-DD)"),
+    period_end: str = Query("2026-09-30", description="Конец периода (YYYY-MM-DD)"),
     min_attendance_pct: float = Query(0.0, description="Минимальный процент"),
     max_attendance_pct: float = Query(100.0, description="Максимальный процент"),
     limit: int = Query(10, description="Лимит топа студентов"),
     _user: dict = Depends(verify_jwt)
 ):
-    # Передаём параметры запроса без изменений.
-    params = dict(request.query_params)
+    # Передаём и явные параметры, и значения по умолчанию.
+    params = dict(request.query_params, term=term, period_start=period_start,
+                  period_end=period_end, min_attendance_pct=min_attendance_pct,
+                  max_attendance_pct=max_attendance_pct, limit=limit)
     auth_header = request.headers.get("Authorization")
 
     async with httpx.AsyncClient(timeout=30.0) as client:
@@ -125,11 +127,11 @@ async def proxy_lab1_report(
 )
 async def proxy_lab2_report(
     request: Request,
-    semester: int = Query(..., description="Семестр обучения"),
-    enrollment_year: int = Query(..., description="Год поступления"),
+    semester: int = Query(2, description="Семестр обучения"),
+    enrollment_year: int = Query(2023, description="Год поступления"),
     _user: dict = Depends(verify_jwt)
 ):
-    params = dict(request.query_params)
+    params = dict(request.query_params, semester=semester, enrollment_year=enrollment_year)
     auth_header = request.headers.get("Authorization")
 
     async with httpx.AsyncClient(timeout=30.0) as client:
@@ -154,9 +156,9 @@ async def proxy_lab2_report(
 )
 async def proxy_lab3_report(
     request: Request,
-    group_id: str = Query(..., description="Идентификатор группы"),
-    period_start: str = Query(..., description="Начало периода (YYYY-MM-DD)"),
-    period_end: str = Query(..., description="Конец периода (YYYY-MM-DD)"),
+    group_id: str = Query("08ac3f6b-1650-4099-b338-08e7711813a1", description="Идентификатор группы"),
+    period_start: str = Query("2026-09-01", description="Начало периода (YYYY-MM-DD)"),
+    period_end: str = Query("2026-09-30", description="Конец периода (YYYY-MM-DD)"),
     _user: dict = Depends(verify_jwt)
 ):
     auth_header = request.headers.get("Authorization")
@@ -164,7 +166,8 @@ async def proxy_lab3_report(
         try:
             response = await client.get(
                 f"{LAB3_URL}/api/v1/labs/lab3/hours-report",
-                params=dict(request.query_params),
+                params=dict(request.query_params, group_id=group_id,
+                            period_start=period_start, period_end=period_end),
                 headers={"Authorization": auth_header} if auth_header else {}
             )
         except httpx.RequestError:
