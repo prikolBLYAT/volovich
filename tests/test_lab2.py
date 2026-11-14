@@ -64,6 +64,15 @@ class AudienceReportTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         return response.json()
 
+    def test_graph_runs_before_postgres(self):
+        result = [graph_row()]
+        def graph_first(*args, **kwargs):
+            self.pg.assert_not_called()
+            return result
+        self.session.run.side_effect = graph_first
+        self.assertEqual(len(self.request_report()), 1)
+        self.pg.assert_called_once()
+
     def test_unscheduled_lectures_and_courses_are_omitted(self):
         self.cursor.fetchall.side_effect = [
             [lecture_row(), lecture_row(UNSCHEDULED),
@@ -93,8 +102,8 @@ class AudienceReportTests(unittest.TestCase):
     def test_empty_graph_result_skips_course_metadata_and_mongo(self):
         self.session.run.return_value = []
         self.assertEqual(self.request_report(), [])
-        self.pg.assert_called_once()
-        self.cursor.execute.assert_called_once()
+        self.pg.assert_not_called()
+        self.cursor.execute.assert_not_called()
         self.mongo_constructor.assert_not_called()
 
     def test_repeated_classes_and_groups_do_not_inflate_listener_totals(self):
@@ -126,11 +135,29 @@ class AudienceReportTests(unittest.TestCase):
         self.assertEqual(self.request_report(), [])
         self.mongo_constructor.assert_not_called()
 
-    def test_no_postgres_candidates_skips_graph_and_mongo(self):
+    def test_no_postgres_candidates_skips_mongo_after_graph(self):
         self.cursor.fetchall.side_effect = [[]]
         self.assertEqual(self.request_report(), [])
-        self.graph.assert_not_called()
+        self.graph.assert_called_once()
         self.mongo_constructor.assert_not_called()
+
+    def test_pg_filters_exact_graph_pairs_and_rejected_lectures_do_not_add_groups(self):
+        self.session.run.return_value = [graph_row(), graph_row(OTHER_LECTURE, group_id='group-2', listeners=7)]
+        course = self.request_report()[0]
+        self.assertEqual(course['total_enrolled_students'], 5)
+        self.assertEqual(course['lectures'][0]['required_room_capacity'], 5)
+        sql, params = self.cursor.execute.call_args.args
+        self.assertIn('(c.id, l.id) IN', sql)
+        self.assertIn('unnest(%s::uuid[], %s::uuid[])', sql)
+        self.assertIn('l.technical_requirements IS TRUE', sql)
+        self.assertIn('c.semester = %s', sql)
+        self.assertEqual(params[0], 2)
+        self.assertEqual(set(zip(params[1], params[2])), {(COURSE, LECTURE), (COURSE, OTHER_LECTURE)})
+        self.assertEqual(self.session.run.call_args.kwargs, {'enrollment_year': 2023})
+        cypher = self.session.run.call_args.args[0]
+        self.assertIn("l.type = 'Lecture'", cypher)
+        self.assertIn('count(DISTINCT sc)', cypher)
+        self.assertLess(cypher.index('count(DISTINCT sc)'), cypher.index('MATCH (st:Student)'))
 
     def test_missing_or_incomplete_hierarchy_returns_503(self):
         collection = self.mongo.__enter__.return_value[lab.MONGO_DB]['university_hierarchy']
@@ -149,7 +176,7 @@ class AudienceReportTests(unittest.TestCase):
         self.session.run.side_effect = RuntimeError('test graph unavailable')
         response = self.client.get(PATH, params=self.params)
         self.assertEqual(response.status_code, 503)
-        self.pg.assert_called_once()
+        self.pg.assert_not_called()
         self.mongo_constructor.assert_not_called()
 
 

@@ -12,8 +12,8 @@
 
 ```text
 Gateway: JWT, semester, enrollment_year
-  → PostgreSQL: подходящие курсы и лекции + описательные поля
-  → Neo4j: занятия и группы нужного набора, численность групп
+  → Neo4j: лекционные занятия групп нужного набора, численность групп
+  → PostgreSQL: точные пары курс/лекция из графа, фильтр семестра и оборудования, атрибуты
   → Python: показатели лекций и уникальные группы курса
   → MongoDB: подразделения оставшихся курсов
   → JSON-массив курсов
@@ -43,111 +43,14 @@ JWT выдаётся методом `POST /api/v1/auth/login`: Gateway срав�
 
 В этой лабе **нет `group_id`, фильтра периода и условия «только курсы кафедры группы»**. Последнее относится к третьей лабе и сюда автоматически не переносится.
 
-## 3. Запрос №1. PostgreSQL: курсы и лекции
-
-```sql
-SELECT
-    c.id AS course_id,
-    c.name AS course_name,
-    c.description,
-    c.semester,
-    c.department_id,
-    c.duration_hours,
-    c.lecture_hours,
-    c.practice_hours,
-    sp.id AS speciality_id,
-    sp.name AS speciality_name,
-    sp.code AS speciality_code,
-    l.id AS lecture_id,
-    l.title AS lecture_title,
-    l.annotation,
-    l.type AS lecture_type,
-    l.technical_requirements
-FROM courses c
-JOIN specialities sp ON sp.id = c.speciality_id
-JOIN lectures l ON l.course_id = c.id
-WHERE c.semester = %s
-  AND l.type = 'Lecture'
-  AND l.technical_requirements IS TRUE
-ORDER BY c.id, l.id;
-```
-
-Параметры вызова:
-
-```python
-cur.execute(pg_sql, (semester,))
-```
-
-В SQL передаётся только семестр. Год набора используется позже в Neo4j.
-
-### Какие таблицы соединяются
-
-```text
-courses.speciality_id → specialities.id
-lectures.course_id → courses.id
-```
-
-Оба JOIN внутренние. Строка возникает для пары «курс — его подходящая лекция». Несколько подходящих лекций одного курса дают несколько строк с повторением атрибутов курса.
-
-### Фильтры
-
-1. `c.semester = %s`: курс относится к заданному семестру.
-2. `l.type = 'Lecture'`: практики и лабораторные исключены.
-3. `l.technical_requirements IS TRUE`: нужен именно булевый `true`. Значения `false` и `NULL` не подходят.
-
-Код не ищет слово об оборудовании в `annotation` или `description`. Смысл требования представлен булевым полем `technical_requirements`.
-
-### Поля результата
-
-| Поле/группа полей | Зачем читаются |
-|---|---|
-| `course_id` | Идентификатор курса для Neo4j и группировки |
-| `course_name`, `description` | Название и описание курса в ответе |
-| `semester` | Семестр курса в ответе |
-| `department_id` | Связь с иерархией MongoDB |
-| `duration_hours`, `lecture_hours`, `practice_hours` | Общий учебный объём курса из PG; не число занятий графовой выборки |
-| `speciality_id`, `speciality_name`, `speciality_code` | Специальность курса |
-| `lecture_id` | UUID лекции для ограничения графа |
-| `lecture_title`, `annotation` | Название и аннотация лекции |
-| `lecture_type` | Тип занятия, при данном фильтре `Lecture` |
-| `technical_requirements` | Признак требований к оборудованию, при данном фильтре `true` |
-
-Кафедры, институты и университеты в PG не соединяются. От кафедры хранится только UUID.
-
-### Что делает Python
-
-Собирает словарь:
-
-```python
-courses[course_id] = {
-    'info': row,
-    'lectures': [row_for_lecture_1, row_for_lecture_2, ...],
-}
-```
-
-В `info` сохраняется строка с полями курса; все строки его лекций накапливаются отдельно. Также создаётся `lecture_ids` из всех строк SQL.
-
-Дальше в Neo4j уходят:
-
-```text
-course_ids = list(courses)
-lecture_ids = UUID лекций из SQL
-enrollment_year = год набора из HTTP-запроса
-```
-
-Если `lecture_rows` пуст, ответ сразу `[]`. Neo4j и MongoDB не вызываются.
-
-### Почему описания читаются уже здесь
-
-Текущий код получает все поля одним SQL-запросом. Это уменьшает число обращений к PG, но часть названий и аннотаций может быть прочитана для лекций, которые потом отсечёт граф. В реализации нет дополнительного позднего запроса за описаниями. Это компромисс между объёмом ранней выборки и ещё одним сетевым обращением, а не доказательство универсально лучшего порядка.
-
-## 4. Запрос №2. Neo4j: расписание и слушатели
+## 3. Запрос №1. Neo4j: расписание и слушатели
 
 ```cypher
-MATCH (c:Course)<-[:OF_COURSE]-(l:Lecture)
-      <-[:FOR_LECTURE]-(sc:Schedule)<-[:HAS_SCHEDULE]-(g:Group)
-WHERE c.id IN $course_ids AND l.id IN $lecture_ids
-  AND g.enrollment_year = $enrollment_year
+MATCH (g:Group)
+WHERE g.enrollment_year = $enrollment_year
+MATCH (g)-[:HAS_SCHEDULE]->(sc:Schedule)-[:FOR_LECTURE]->(l:Lecture)
+      -[:OF_COURSE]->(c:Course)
+WHERE l.type = 'Lecture'
 WITH c, l, g, count(DISTINCT sc) AS scheduled_count
 MATCH (st:Student)-[:BELONGS_TO]->(g)
 RETURN c.id AS course_id, l.id AS lecture_id, g.id AS group_id,
@@ -158,8 +61,6 @@ RETURN c.id AS course_id, l.id AS lecture_id, g.id AS group_id,
 
 | Cypher-параметр | Значение |
 |---|---|
-| `$course_ids` | Курсы, оставшиеся после SQL |
-| `$lecture_ids` | Лекции этих курсов с требованиями к оборудованию |
 | `$enrollment_year` | Выбранный год поступления групп |
 
 ### Обход графа
@@ -169,7 +70,7 @@ Group ─HAS_SCHEDULE→ Schedule ─FOR_LECTURE→ Lecture ─OF_COURSE→ Cour
 Student ─BELONGS_TO→ Group
 ```
 
-В графе проверяется, какие подходящие лекции реально назначены группам нужного набора. Одного наличия лекции в PostgreSQL для попадания в отчёт недостаточно.
+Это первое обращение к БД: граф отбирает группы по году набора, их занятия типа `Lecture` и слушателей. Семестр и требования к оборудованию пока не фильтруются: этих свойств нет в текущей модели графа, поэтому их проверяет следующий SQL. Если граф не вернул положительных занятий и слушателей, сразу возвращается `[]` без PostgreSQL и MongoDB.
 
 В запросе нет фильтра `Schedule.date`. Поэтому в выбранном срезе курса/набора учитываются все связанные записи расписания, независимо от календарного периода. Нет и ограничения по кабинету или преподавателю.
 
@@ -207,11 +108,99 @@ count(DISTINCT st) AS listeners_count
 
 `MATCH` студентов обязательный. Группа без студентов не возвращается. Обработчик дополнительно отбрасывает строки с `listeners_count <= 0` или `scheduled_count <= 0`.
 
+## 4. Запрос №2. PostgreSQL: курсы и лекции
+
+```sql
+SELECT
+    c.id AS course_id,
+    c.name AS course_name,
+    c.description,
+    c.semester,
+    c.department_id,
+    c.duration_hours,
+    c.lecture_hours,
+    c.practice_hours,
+    sp.id AS speciality_id,
+    sp.name AS speciality_name,
+    sp.code AS speciality_code,
+    l.id AS lecture_id,
+    l.title AS lecture_title,
+    l.annotation,
+    l.type AS lecture_type,
+    l.technical_requirements
+FROM courses c
+JOIN specialities sp ON sp.id = c.speciality_id
+JOIN lectures l ON l.course_id = c.id
+WHERE c.semester = %s
+  AND l.type = 'Lecture'
+  AND l.technical_requirements IS TRUE
+  AND (c.id, l.id) IN (SELECT * FROM unnest(%s::uuid[], %s::uuid[]))
+ORDER BY c.id, l.id;
+```
+
+Параметры вызова:
+
+```python
+cur.execute(pg_sql, (semester, [c for c, l in candidate_pairs],
+                     [l for c, l in candidate_pairs]))
+```
+
+В SQL передаются семестр и два массива из одного отсортированного списка уникальных пар `candidate_pairs`: UUID курса и соответствующей лекции. Многомассивный `unnest` сохраняет пары, не создаёт декартовы сочетания. Год набора уже использован первым запросом в Neo4j.
+
+### Какие таблицы соединяются
+
+```text
+courses.speciality_id → specialities.id
+lectures.course_id → courses.id
+```
+
+Оба JOIN внутренние. Строка возникает для пары «курс — его подходящая лекция». Несколько подходящих лекций одного курса дают несколько строк с повторением атрибутов курса.
+
+### Фильтры
+
+1. `c.semester = %s`: курс относится к заданному семестру.
+2. `l.type = 'Lecture'`: практики и лабораторные исключены.
+3. `l.technical_requirements IS TRUE`: нужен именно булевый `true`. Значения `false` и `NULL` не подходят.
+
+Код не ищет слово об оборудовании в `annotation` или `description`. Смысл требования представлен булевым полем `technical_requirements`.
+
+### Поля результата
+
+| Поле/группа полей | Зачем читаются |
+|---|---|
+| `course_id` | Идентификатор курса для сопоставления с графом и группировки |
+| `course_name`, `description` | Название и описание курса в ответе |
+| `semester` | Семестр курса в ответе |
+| `department_id` | Связь с иерархией MongoDB |
+| `duration_hours`, `lecture_hours`, `practice_hours` | Общий учебный объём курса из PG; не число занятий графовой выборки |
+| `speciality_id`, `speciality_name`, `speciality_code` | Специальность курса |
+| `lecture_id` | UUID лекции для сопоставления со статистикой графа |
+| `lecture_title`, `annotation` | Название и аннотация лекции |
+| `lecture_type` | Тип занятия, при данном фильтре `Lecture` |
+| `technical_requirements` | Признак требований к оборудованию, при данном фильтре `true` |
+
+Кафедры, институты и университеты в PG не соединяются. От кафедры хранится только UUID.
+
+### Что делает Python
+
+Собирает словарь:
+
+```python
+courses[course_id] = {
+    'info': row,
+    'lectures': [row_for_lecture_1, row_for_lecture_2, ...],
+}
+```
+
+В `info` сохраняется строка с полями курса; строки его лекций накапливаются отдельно. Если `lecture_rows` пуст, возвращается `[]`, MongoDB не вызывается; Neo4j к этому моменту уже прочитана. В PostgreSQL не выбираются лекции, которых нет в графовой области нужного года набора.
+
 ## 5. Агрегация в Python — без новых запросов
 
 ### 5.1. Показатели отдельной лекции
 
-Для каждой лекции:
+После SQL формируется множество `selected_pairs` из прошедших фильтр пар курс/лекция. Только соответствующие строки графа участвуют в дальнейшей агрегации; отклонённая лекция не добавляет ни занятия, ни слушателей курса.
+
+Для каждой выбранной лекции:
 
 ```python
 stats = lecture_stats.setdefault(lecture_id, {
@@ -254,7 +243,7 @@ total_enrolled_students = sum(course_groups[course_id].values())
 
 ### 5.3. Раннее исключение пустых курсов
 
-После обхода графа остаются только курсы, присутствующие в `course_groups`. Если таких курсов нет, возвращается `[]`, а MongoDB не вызывается.
+После SQL-фильтра и агрегации оставляются только курсы, присутствующие в `course_groups`. Если таких курсов нет, возвращается `[]`, а MongoDB не вызывается.
 
 Из оставшихся курсов берутся уникальные `department_id` для одного пакетного запроса иерархии.
 
@@ -361,9 +350,9 @@ SQL сортирует строки по `c.id, l.id`. Словари и спи�
 
 | Сценарий | Прикладные чтения |
 |---|---|
-| SQL не нашёл курсов/лекций | Один SQL |
-| SQL нашёл, Neo4j не дал подходящего расписания и групп | Один SQL + один Cypher |
-| Есть непустой отчёт | Один SQL + один Cypher + один MongoDB find |
+| Neo4j не нашёл занятий/слушателей | Один Cypher |
+| Граф непустой, SQL не нашёл подходящих пар | Один Cypher + один SQL |
+| Есть непустой отчёт | Один Cypher + один SQL + один MongoDB find |
 
 Запросов в цикле по курсам, лекциям, группам или студентам нет. Суммирование в Python не означает дополнительных обращений к БД.
 
@@ -390,4 +379,4 @@ Gateway сохраняет HTTP-статус неуспешного ответа
 
 JWT проверяется в Gateway, а не в `lab2.py`. Если прямой порт сервиса опубликован, эта проверка сама по себе не запрещает обращаться к сервису в обход шлюза.
 
-Документ составлен по исходникам. При его подготовке запросы к живым БД не запускались и новый протокол нагрузочных измерений не создавался.
+Новый обработчик сверили со старым на живых БД в режиме без записи: ответы совпали для 32 сочетаний семестров 1–8 и годов набора 2023–2026, из них 23 непустых. Отдельно проверено, что первым вызывается Neo4j. Это проверка правильности и порядка, не доказательство ускорения.

@@ -92,7 +92,38 @@ def get_audience_report(
         semester: int = Query(..., ge=1, description="Семестр обучения", json_schema_extra={"example": 1}),
         enrollment_year: int = Query(..., ge=1, description="Год поступления (набора) групп", json_schema_extra={"example": 2023})
 ):
-    # Ищем лекции заданного семестра с требованиями к оборудованию.
+    # В графе ищем группы нужного года поступления и их занятия.
+    try:
+        with GraphDatabase.driver(
+            f"bolt://{NEO4J_HOST}:{NEO4J_BOLT_PORT}",
+            auth=(NEO4J_USER, NEO4J_PASS)
+        ) as driver:
+            with driver.session() as session:
+                cypher_query = """
+                MATCH (g:Group)
+                WHERE g.enrollment_year = $enrollment_year
+                MATCH (g)-[:HAS_SCHEDULE]->(sc:Schedule)-[:FOR_LECTURE]->(l:Lecture)
+                      -[:OF_COURSE]->(c:Course)
+                WHERE l.type = 'Lecture'
+                WITH c, l, g, count(DISTINCT sc) AS scheduled_count
+                MATCH (st:Student)-[:BELONGS_TO]->(g)
+                RETURN c.id AS course_id, l.id AS lecture_id, g.id AS group_id,
+                       scheduled_count, count(DISTINCT st) AS listeners_count
+                """
+                # Студентов считаем после занятий, чтобы не посчитать одного человека несколько раз.
+                result = session.run(
+                    cypher_query, enrollment_year=enrollment_year
+                )
+                graph_rows = [dict(record) for record in result
+                              if record["listeners_count"] > 0 and record["scheduled_count"] > 0]
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Neo4j недоступен: {str(e)}")
+
+    if not graph_rows:
+        return []
+    candidate_pairs = sorted({(row["course_id"], row["lecture_id"]) for row in graph_rows})
+
+    # Из графовой выборки оставляем лекции нужного семестра и с оборудованием.
     pg_sql = """
     SELECT
         c.id AS course_id,
@@ -117,13 +148,15 @@ def get_audience_report(
     WHERE c.semester = %s
       AND l.type = 'Lecture'
       AND l.technical_requirements IS TRUE
+      AND (c.id, l.id) IN (SELECT * FROM unnest(%s::uuid[], %s::uuid[]))
     ORDER BY c.id, l.id;
     """
 
     with closing(get_pg_conn()) as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            # Сразу читаем названия и остальные поля курсов и лекций для отчёта.
-            cur.execute(pg_sql, (semester,))
+            # Читаем атрибуты только найденных в графе пар курс/лекция.
+            cur.execute(pg_sql, (semester, [c for c, l in candidate_pairs],
+                                 [l for c, l in candidate_pairs]))
             lecture_rows = cur.fetchall()
 
     if not lecture_rows:
@@ -133,49 +166,26 @@ def get_audience_report(
     for row in lecture_rows:
         course_id = str(row["course_id"])
         courses.setdefault(course_id, {"info": row, "lectures": []})["lectures"].append(row)
-    lecture_ids = [str(row["lecture_id"]) for row in lecture_rows]
 
-    # В графе ищем группы нужного года поступления и их занятия.
+    selected_pairs = {(str(row["course_id"]), str(row["lecture_id"])) for row in lecture_rows}
     lecture_stats = {}
     course_groups = {}
-    try:
-        with GraphDatabase.driver(
-            f"bolt://{NEO4J_HOST}:{NEO4J_BOLT_PORT}",
-            auth=(NEO4J_USER, NEO4J_PASS)
-        ) as driver:
-            with driver.session() as session:
-                cypher_query = """
-                MATCH (c:Course)<-[:OF_COURSE]-(l:Lecture)
-                      <-[:FOR_LECTURE]-(sc:Schedule)<-[:HAS_SCHEDULE]-(g:Group)
-                WHERE c.id IN $course_ids AND l.id IN $lecture_ids
-                  AND g.enrollment_year = $enrollment_year
-                WITH c, l, g, count(DISTINCT sc) AS scheduled_count
-                MATCH (st:Student)-[:BELONGS_TO]->(g)
-                RETURN c.id AS course_id, l.id AS lecture_id, g.id AS group_id,
-                       scheduled_count, count(DISTINCT st) AS listeners_count
-                """
-                # Студентов считаем после занятий, чтобы не посчитать одного человека несколько раз.
-                result = session.run(
-                    cypher_query, course_ids=list(courses), lecture_ids=lecture_ids,
-                    enrollment_year=enrollment_year
-                )
-                for record in result:
-                    course_id = record["course_id"]
-                    lecture_id = record["lecture_id"]
-                    group_id = record["group_id"]
-                    listeners = record["listeners_count"]
-                    if listeners <= 0 or record["scheduled_count"] <= 0:
-                        continue
-                    stats = lecture_stats.setdefault(lecture_id, {
-                        "scheduled_count": 0, "listeners_count": 0
-                    })
-                    stats["scheduled_count"] += record["scheduled_count"]
-                    stats["listeners_count"] += listeners
-                    # В числе слушателей курса каждую группу учитываем один раз.
-                    course_groups.setdefault(course_id, {})[group_id] = listeners
-    except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Neo4j недоступен: {str(e)}")
-
+    for record in graph_rows:
+        course_id = record["course_id"]
+        lecture_id = record["lecture_id"]
+        if (course_id, lecture_id) not in selected_pairs:
+            continue
+        group_id = record["group_id"]
+        listeners = record["listeners_count"]
+        if listeners <= 0 or record["scheduled_count"] <= 0:
+            continue
+        stats = lecture_stats.setdefault(lecture_id, {
+            "scheduled_count": 0, "listeners_count": 0
+        })
+        stats["scheduled_count"] += record["scheduled_count"]
+        stats["listeners_count"] += listeners
+        # В числе слушателей курса каждую группу учитываем один раз.
+        course_groups.setdefault(course_id, {})[group_id] = listeners
     courses = {course_id: course for course_id, course in courses.items() if course_id in course_groups}
     if not courses:
         return []
