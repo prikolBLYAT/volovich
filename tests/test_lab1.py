@@ -145,20 +145,11 @@ class AttendanceGraphTests(unittest.TestCase):
         self.collection.find.side_effect = RuntimeError('unavailable')
         self.assertEqual(self.client.get(PATH, params=self.params).status_code, 503)
 
-    def test_report_sql_has_only_three_named_stages_and_standard_round(self):
-        self.assertLessEqual(lab.ATTENDANCE_REPORT_SQL.count(' AS ('), 3)
-        self.assertIn('ROUND(', lab.ATTENDANCE_REPORT_SQL)
-        self.assertNotIn('div(', lab.ATTENDANCE_REPORT_SQL)
-
-    def test_sparse_rounding_corrections_match_previous_python_percentages(self):
-        for total in (32, 160, 4000):
-            corrections = json.loads(lab.percentage_rounding_corrections([total, total]))
-            for attended in range(total + 1):
-                hundredths, remainder = divmod(attended * 10000, total)
-                rounded = (hundredths + (remainder * 2 > total or
-                           remainder * 2 == total)) / 100
-                result = corrections.get(f'{total}:{attended}', rounded)
-                self.assertEqual(result, round(attended / total * 100, 2), (total, attended))
+    def test_report_sql_has_no_cte_or_rounding_workarounds(self):
+        self.assertNotIn('WITH ', lab.ATTENDANCE_REPORT_SQL)
+        self.assertNotIn('jsonb', lab.ATTENDANCE_REPORT_SQL)
+        self.assertIn('HAVING ROUND(', lab.ATTENDANCE_REPORT_SQL)
+        self.assertFalse(hasattr(lab, 'percentage_rounding_corrections'))
 
     def test_no_search_hits_skips_other_databases(self):
         self.es.search.return_value = {'hits': {'hits': []}}
@@ -329,12 +320,12 @@ class AttendanceSQLTests(unittest.TestCase):
         ctes = ', '.join(f'{name} AS (SELECT * FROM jsonb_to_recordset(%s::jsonb) AS data({columns}))'
                          for name, columns, rows in fixtures)
         # Исполняется ровно SQL обработчика, меняются лишь источники данных на CTE.
-        sql = 'WITH ' + ctes + ', ' + lab.ATTENDANCE_REPORT_SQL.lstrip().removeprefix('WITH ')
+        sql = 'WITH ' + ctes + ' ' + lab.ATTENDANCE_REPORT_SQL
         params = [json.dumps(rows) for name, columns, rows in fixtures] + [
             [s for s, g, n in scopes], [g for s, g, n in scopes], [n for s, g, n in scopes],
             [g for g, sc in schedule_scope], [sc for g, sc in schedule_scope],
             date(2026, 9, 1), date(2026, 10, 1),
-            lab.percentage_rounding_corrections(n for s, g, n in scopes), lower, upper, limit]
+            lower, upper, limit]
         with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(sql, params)
             return cur.fetchall()
@@ -362,21 +353,20 @@ class AttendanceSQLTests(unittest.TestCase):
             with self.subTest(kwargs=kwargs):
                 self.assertEqual(self.query(**kwargs)[0]['attended_classes'], 0)
 
-    def test_half_even_both_directions_and_inclusive_filter(self):
+    def test_standard_postgres_round_and_inclusive_filter(self):
         row = self.query(scopes=[(STUDENT, GROUP, 32)], marks=[self.mark()],
-                         lower=3.12, upper=3.12)[0]
-        self.assertEqual(row['attendance_percentage'], Decimal('3.12'))
-        self.assertEqual(float(row['attendance_percentage']), round(1 / 32 * 100, 2))
+                         lower=3.13, upper=3.13)[0]
+        self.assertEqual(row['attendance_percentage'], Decimal('3.13'))
         row = self.query(scopes=[(STUDENT, GROUP, 32)],
                          marks=[self.mark(), self.mark(SCHEDULES[1])])[0]
         self.assertEqual(row['attendance_percentage'], Decimal('6.25'))
-        # 1/160*100 = 0.625 — чётная сотая остаётся без изменения.
+        # PostgreSQL округляет точную половину от нуля: 0.625 -> 0.63.
         self.assertEqual(self.query(scopes=[(STUDENT, GROUP, 160)], marks=[self.mark()])[0]
-                         ['attendance_percentage'], Decimal('0.62'))
+                         ['attendance_percentage'], Decimal('0.63'))
         self.assertEqual(self.query(scopes=[(STUDENT, GROUP, 32)], marks=[self.mark()],
-                                    lower=3.13), [])
+                                    lower=3.14), [])
 
-    def test_half_even_odd_hundredth_rounds_up(self):
+    def test_standard_round_odd_hundredth_rounds_up(self):
         # Три посещения из 32: 9.375 -> 9.38.
         rows = self.query(scopes=[(STUDENT, GROUP, 32)],
                           schedule=[dict(id=sc, group_id=GROUP) for sc in SCHEDULES],
@@ -385,14 +375,14 @@ class AttendanceSQLTests(unittest.TestCase):
         self.assertEqual(rows[0]['attendance_percentage'], Decimal('9.38'))
         self.assertEqual(float(rows[0]['attendance_percentage']), round(3 / 32 * 100, 2))
 
-    def test_python_binary_rounding_is_preserved_at_filter_boundary(self):
+    def test_standard_round_is_used_at_filter_boundary(self):
         ids = [f'50000000-0000-0000-0000-{index:012d}' for index in range(1, 24)]
         rows = self.query(scopes=[(STUDENT, GROUP, 160)],
                           schedule=[dict(id=sc, group_id=GROUP) for sc in ids],
                           schedule_scope=[(GROUP, sc) for sc in ids],
-                          marks=[self.mark(sc) for sc in ids], lower=14.37, upper=14.37)
+                          marks=[self.mark(sc) for sc in ids], lower=14.38, upper=14.38)
         self.assertEqual(len(rows), 1)
-        self.assertEqual(float(rows[0]['attendance_percentage']), round(23 / 160 * 100, 2))
+        self.assertEqual(rows[0]['attendance_percentage'], Decimal('14.38'))
 
     def test_order_total_uuid_filter_and_limit(self):
         third = '20000000-0000-0000-0000-000000000003'

@@ -1,7 +1,6 @@
 import os
 import json
 from contextlib import closing
-from math import gcd
 from datetime import date, datetime, timedelta
 from typing import List, Optional
 from fastapi import FastAPI, HTTPException, Query, status
@@ -129,51 +128,23 @@ def get_es_client():
         )
 
 
-def percentage_rounding_corrections(totals):
-    # В точных половинах сохраняем прежний round Python, включая двоичную погрешность.
-    corrections = {}
-    for total in set(totals):
-        if total <= 0:
-            continue
-        step = total // gcd(total, 10000)
-        if step % 2:
-            continue
-        for attended in range(step // 2, total + 1, step):
-            hundredths, _ = divmod(attended * 10000, total)
-            exact = (hundredths + 1) / 100
-            previous = round(attended / total * 100, 2)
-            if previous != exact:
-                corrections[f"{total}:{attended}"] = previous
-    return json.dumps(corrections)
-
-
 ATTENDANCE_REPORT_SQL = """
-WITH scoped_students AS (
-    SELECT * FROM unnest(%s::uuid[], %s::uuid[], %s::int[])
-        AS scope(student_id, group_id, total_classes)
-), counts AS (
-    SELECT s.student_id, s.group_id, s.total_classes,
-           COUNT(DISTINCT a.schedule_id) AS attended_classes
-    FROM scoped_students s
-    LEFT JOIN (
-        SELECT a.student_id, a.schedule_id, sc.group_id
-        FROM unnest(%s::uuid[], %s::uuid[]) AS gs(group_id, schedule_id)
-        JOIN schedule sc ON sc.id = gs.schedule_id AND sc.group_id = gs.group_id
-        JOIN attendance a ON a.schedule_id = sc.id
-        JOIN students st ON st.id = a.student_id AND st.group_id = sc.group_id
-        WHERE a.date BETWEEN %s AND %s AND a.mark = 1
-    ) a ON a.student_id = s.student_id AND a.group_id = s.group_id
-    WHERE s.total_classes > 0
-    GROUP BY s.student_id, s.group_id, s.total_classes
-), percentages AS (
-    SELECT *, COALESCE((%s::jsonb ->> (total_classes::text || ':' || attended_classes::text))::numeric,
-                      ROUND(100.0 * attended_classes / total_classes, 2)) AS attendance_percentage
-    FROM counts
-)
 SELECT r.*, g.id AS metadata_group_id, g.department_id, g.name AS group_name,
        sp.name AS speciality_name, sp.code AS speciality_code, sp.degree_level
 FROM (
-    SELECT * FROM percentages WHERE attendance_percentage BETWEEN %s AND %s
+    SELECT s.student_id, s.group_id, s.total_classes,
+           COUNT(DISTINCT a.schedule_id) AS attended_classes,
+           ROUND(100.0 * COUNT(DISTINCT a.schedule_id) / s.total_classes, 2) AS attendance_percentage
+    FROM unnest(%s::uuid[], %s::uuid[], %s::int[]) AS s(student_id, group_id, total_classes)
+    LEFT JOIN (unnest(%s::uuid[], %s::uuid[]) AS gs(group_id, schedule_id)
+               JOIN schedule sc ON sc.id = gs.schedule_id AND sc.group_id = gs.group_id)
+           ON gs.group_id = s.group_id
+    LEFT JOIN students st ON st.id = s.student_id AND st.group_id = s.group_id
+    LEFT JOIN attendance a ON a.student_id = st.id AND a.schedule_id = sc.id
+                          AND a.date BETWEEN %s AND %s AND a.mark = 1
+    WHERE s.total_classes > 0
+    GROUP BY s.student_id, s.group_id, s.total_classes
+    HAVING ROUND(100.0 * COUNT(DISTINCT a.schedule_id) / s.total_classes, 2) BETWEEN %s AND %s
     ORDER BY attendance_percentage, total_classes DESC, student_id LIMIT %s
 ) r
 LEFT JOIN (groups g JOIN specialities sp ON sp.id = g.speciality_id) ON g.id = r.group_id
@@ -296,7 +267,6 @@ def get_attendance_report(
         [student_schedules[s]["group_id"] for s in student_ids],
         [len(student_schedules[s]["schedule_ids"]) for s in student_ids],
         schedule_groups, schedule_ids, period_start, period_end,
-        percentage_rounding_corrections(len(ids) for ids in group_schedules.values()),
         min_attendance_pct, max_attendance_pct, limit
     )
     with closing(get_pg_conn()) as pg_conn:

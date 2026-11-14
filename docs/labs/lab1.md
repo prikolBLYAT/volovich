@@ -175,32 +175,22 @@ student_schedules[student_id] = {
 Теперь это один SQL и одно подключение, а не отдельные запросы посещений и групп. Формат ответа не меняется.
 
 ```sql
-WITH scoped_students AS (
-    SELECT * FROM unnest(%s::uuid[], %s::uuid[], %s::int[])
-        AS scope(student_id, group_id, total_classes)
-), counts AS (
-    SELECT s.student_id, s.group_id, s.total_classes,
-           COUNT(DISTINCT a.schedule_id) AS attended_classes
-    FROM scoped_students s
-    LEFT JOIN (
-        SELECT a.student_id, a.schedule_id, sc.group_id
-        FROM unnest(%s::uuid[], %s::uuid[]) AS gs(group_id, schedule_id)
-        JOIN schedule sc ON sc.id = gs.schedule_id AND sc.group_id = gs.group_id
-        JOIN attendance a ON a.schedule_id = sc.id
-        JOIN students st ON st.id = a.student_id AND st.group_id = sc.group_id
-        WHERE a.date BETWEEN %s AND %s AND a.mark = 1
-    ) a ON a.student_id = s.student_id AND a.group_id = s.group_id
-    WHERE s.total_classes > 0
-    GROUP BY s.student_id, s.group_id, s.total_classes
-), percentages AS (
-    SELECT *, COALESCE((%s::jsonb ->> (total_classes::text || ':' || attended_classes::text))::numeric,
-                      ROUND(100.0 * attended_classes / total_classes, 2)) AS attendance_percentage
-    FROM counts
-)
 SELECT r.*, g.id AS metadata_group_id, g.department_id, g.name AS group_name,
        sp.name AS speciality_name, sp.code AS speciality_code, sp.degree_level
 FROM (
-    SELECT * FROM percentages WHERE attendance_percentage BETWEEN %s AND %s
+    SELECT s.student_id, s.group_id, s.total_classes,
+           COUNT(DISTINCT a.schedule_id) AS attended_classes,
+           ROUND(100.0 * COUNT(DISTINCT a.schedule_id) / s.total_classes, 2) AS attendance_percentage
+    FROM unnest(%s::uuid[], %s::uuid[], %s::int[]) AS s(student_id, group_id, total_classes)
+    LEFT JOIN (unnest(%s::uuid[], %s::uuid[]) AS gs(group_id, schedule_id)
+               JOIN schedule sc ON sc.id = gs.schedule_id AND sc.group_id = gs.group_id)
+           ON gs.group_id = s.group_id
+    LEFT JOIN students st ON st.id = s.student_id AND st.group_id = s.group_id
+    LEFT JOIN attendance a ON a.student_id = st.id AND a.schedule_id = sc.id
+                          AND a.date BETWEEN %s AND %s AND a.mark = 1
+    WHERE s.total_classes > 0
+    GROUP BY s.student_id, s.group_id, s.total_classes
+    HAVING ROUND(100.0 * COUNT(DISTINCT a.schedule_id) / s.total_classes, 2) BETWEEN %s AND %s
     ORDER BY attendance_percentage, total_classes DESC, student_id LIMIT %s
 ) r
 LEFT JOIN (groups g JOIN specialities sp ON sp.id = g.speciality_id) ON g.id = r.group_id
@@ -216,26 +206,26 @@ ORDER BY r.attendance_percentage, r.total_classes DESC, r.student_id
 5. Соответствующие UUID занятий.
 6. Начало периода.
 7. Конец периода.
-8. JSON поправок округления, описанных ниже.
-9. Минимальный процент.
-10. Максимальный процент.
-11. Лимит студентов.
+8. Минимальный процент.
+9. Максимальный процент.
+10. Лимит студентов.
 
 Все значения передаются через параметры драйвера. Первые три массива раскрываются по одинаковым позициям, как и отдельная пара массивов группы/занятия. Список занятий группы не размножается по каждому её студенту.
 
-### Этапы SQL
+### Как читается запрос
 
-В запросе осталось три именованных блока вместо шести:
+CTE, JSON-поправок и вспомогательной функции округления больше нет.
 
-- `scoped_students` раскрывает точные тройки студент/группа/план из графа.
-- `counts` считает уникальные присутствия. Внутренняя выборка связывает пары группа/занятие с расписанием и отметками PostgreSQL, проверяет принадлежность студента группе, даты включительно и `mark=1`. LEFT JOIN сохраняет студентов без присутствий с нулём; нулевой план исключается.
-- `percentages` рассчитывает процент обычным `ROUND(..., 2)` с поправками совместимости, описанными ниже.
-
-Вложенный SELECT затем применяет включительный диапазон округлённых процентов, сортирует по проценту возрастанию, плану убыванию и UUID студента возрастанию, применяет `LIMIT`. Только после этого присоединяются группа и специальность. Отсутствующие метаданные не заменяются следующими студентами рейтинга.
+1. `unnest` раскрывает студентов с их группой и числом плановых занятий.
+2. Пары группа/занятие связываются с расписанием PostgreSQL. Проверяется принадлежность студента группе.
+3. `LEFT JOIN attendance` оставляет только отметки нужных занятий за период, где `mark=1`; отсутствие присутствий сохраняет студента с нулём.
+4. `GROUP BY` и `COUNT(DISTINCT a.schedule_id)` считают уникальные посещённые занятия. Нулевой план исключается.
+5. `HAVING ROUND(...) BETWEEN ...` отбирает студентов по проценту; `ORDER BY` и `LIMIT` возвращают только итоговый топ.
+6. Снаружи к итоговому топу присоединяются группа и специальность. Отсутствующие метаданные не заменяются следующими студентами.
 
 ### Округление
 
-Сложная формула из `div/mod/CASE` удалена из SQL. Обычный PostgreSQL `ROUND` округляет точную половину от нуля, а прежний Python — к чётному с учётом двоичной арифметики. Поэтому Python заранее строит небольшой JSON поправок только для точных половин, где результаты отличаются. Рассматриваются уникальные размеры плана, а не отдельный расчёт на каждого студента. Например, сохраняются 3.12 для 1 посещения из 32 и 14.37 для 23 из 160. Дополнительного SQL для этого нет.
+Используется стандартный PostgreSQL `ROUND(..., 2)`, без воспроизведения особенностей Python. Точная половина округляется от нуля: 1 посещение из 32 даёт 3.13, 23 из 160 — 14.38. Это осознанное отличие от прежнего Python `round`, где получались 3.12 и 14.37; на таких границах может измениться попадание в диапазон или порядок рейтинга.
 
 ### Результат
 
